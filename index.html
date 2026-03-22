@@ -609,113 +609,135 @@ function ReadOnlyApp({ quoteId, token }) {
 /* ══════════════════════════════════════
    MANAGEMENT APP
 ══════════════════════════════════════ */
-function ManagementApp({user}) {
-  const [quotes,       setQuotes]       = useState([]);
-  const [company,      setCompany]      = useState(DEFAULT_COMPANY);
-  const [page,         setPage]         = useState('dashboard');
-  const [selectedId,   setSelectedId]   = useState(null);
-  const [sideOpen,     setSideOpen]     = useState(window.innerWidth>768);
-  const [showSettings, setShowSettings] = useState(false);
+function ManagementApp({user}){
+  const[quotes,setQuotes]=useState([]);
+  const[company,setCompany]=useState(DEFAULT_COMPANY);
+  const[page,setPage]=useState('dashboard');
+  const[selectedId,setSelectedId]=useState(null);
+  const[sideOpen,setSideOpen]=useState(window.innerWidth>768);
+  const[showSettings,setShowSettings]=useState(false);
+  const[memberRole,setMemberRole]=useState('editor');
+
+  /* 멤버 역할 로드 */
+  useEffect(()=>{
+    if(!user)return;
+    const{db,fb}=window;
+    (async()=>{
+      try{
+        const snap=await fb.getDoc(fb.doc(db,'members',user.uid));
+        if(snap.exists()){setMemberRole(snap.data().role||'editor');}
+        else{
+          const all=await fb.getDocs(fb.collection(db,'members'));
+          const role=all.empty?'admin':'editor';
+          await fb.setDoc(fb.doc(db,'members',user.uid),{uid:user.uid,email:user.email,role,name:user.displayName||user.email,createdAt:nowIso()});
+          setMemberRole(role);
+        }
+      }catch(e){}
+    })();
+  },[user]);
+
+  const isAdmin=memberRole==='admin';
+  const canEdit=memberRole==='admin'||memberRole==='editor';
 
   /* 회사 설정 로드 */
-  useEffect(() => {
-    const { db, fb } = window;
-    (async () => {
-      try {
-        const snap = await fb.getDoc(fb.doc(db, 'settings', 'company'));
-        if (snap.exists()) setCompany(snap.data());
-      } catch(e) {}
-    })();
-  }, []);
+  useEffect(()=>{
+    const{db,fb}=window;
+    (async()=>{try{const s=await fb.getDoc(fb.doc(db,'settings','company'));if(s.exists())setCompany(s.data());}catch(e){}})();
+  },[]);
 
   /* 견적서 실시간 동기화 */
-  useEffect(() => {
-    const { db, fb } = window;
-    const unsub = fb.onSnapshot(fb.collection(db, 'quotes'), snap => {
-      const qs = snap.docs.map(d => d.data());
-      setQuotes(qs.sort((a,b) => b.id.localeCompare(a.id)));
+  useEffect(()=>{
+    const{db,fb}=window;
+    const unsub=fb.onSnapshot(fb.collection(db,'quotes'),snap=>{
+      const qs=snap.docs.map(d=>d.data());
+      setQuotes(qs.sort((a,b)=>b.id.localeCompare(a.id)));
     });
-    return () => unsub();
-  }, []);
+    return()=>unsub();
+  },[]);
 
   /* 화면 크기 변경 시 사이드바 자동 제어 */
-  useEffect(() => {
-    const fn = () => setSideOpen(window.innerWidth>768);
-    window.addEventListener('resize', fn);
-    return () => window.removeEventListener('resize', fn);
-  }, []);
+  useEffect(()=>{
+    const fn=()=>setSideOpen(window.innerWidth>768);
+    window.addEventListener('resize',fn);
+    return()=>window.removeEventListener('resize',fn);
+  },[]);
 
-  const selected = quotes.find(q => q.id === selectedId) || null;
+  const selected=quotes.find(q=>q.id===selectedId)||null;
+  const navTo=p=>{setPage(p);setSelectedId(null);if(window.innerWidth<=768)setSideOpen(false);};
 
-  const navTo = p => { setPage(p); setSelectedId(null); if(window.innerWidth<=768) setSideOpen(false); };
-
-  const saveCompany = async c => {
-    const { db, fb } = window;
-    setCompany(c);
-    try { await fb.setDoc(fb.doc(db, 'settings', 'company'), c); } catch(e) {}
+  const saveCompany=async c=>{
+    const{db,fb}=window; setCompany(c);
+    try{await fb.setDoc(fb.doc(db,'settings','company'),c);}catch(e){}
     setShowSettings(false);
   };
 
-  const saveQuote = async q => {
-    const { db, fb } = window;
-    try { await fb.setDoc(fb.doc(db, 'quotes', q.id), q); }
-    catch(e) { alert('저장 실패: ' + e.message); return; }
-    setSelectedId(q.id);
-    setPage('detail');
+  const saveQuote=async q=>{
+    const{db,fb}=window;
+    try{await fb.setDoc(fb.doc(db,'quotes',q.id),q);}
+    catch(e){alert('저장 실패: '+e.message);return;}
+    setSelectedId(q.id); setPage('detail');
   };
 
-  const deleteQuote = async id => {
-    if (!confirm('삭제하시겠습니까?')) return;
-    const { db, fb } = window;
-    try { await fb.deleteDoc(fb.doc(db, 'quotes', id)); }
-    catch(e) { alert('삭제 실패: ' + e.message); return; }
-    setSelectedId(null);
-    setPage('dashboard');
+  const deleteQuote=async id=>{
+    if(!isAdmin){alert('관리자만 삭제할 수 있습니다');return;}
+    if(!confirm('삭제하시겠습니까?'))return;
+    const{db,fb}=window;
+    try{await fb.deleteDoc(fb.doc(db,'quotes',id));}catch(e){alert('삭제 실패: '+e.message);return;}
+    setSelectedId(null); setPage('dashboard');
   };
 
-  const updateStatus = async (id, status) => {
-    const q = quotes.find(x => x.id === id);
-    if (!q) return;
-    const entry   = { at: nowIso(), action: `상태 변경: ${STATUS_MAP[status].label}` };
-    const updated = { ...q, status, history: [...(q.history||[]), entry] };
-    const { db, fb } = window;
-    try { await fb.setDoc(fb.doc(db, 'quotes', id), updated); } catch(e) {}
+  const updateStatus=async(id,status)=>{
+    if(!canEdit)return;
+    const q=quotes.find(x=>x.id===id); if(!q)return;
+    const entry={at:nowIso(),action:`상태 변경: ${STATUS_MAP[status].label}`};
+    const updated={...q,status,history:[...(q.history||[]),entry]};
+    const{db,fb}=window;
+    try{await fb.setDoc(fb.doc(db,'quotes',id),updated);}catch(e){}
   };
 
-  const generateShareLink = async quote => {
-    const token   = genToken();
-    const entry   = { at: nowIso(), action: '공유 링크 생성' };
-    const updated = { ...quote, shareToken: token, history: [...(quote.history||[]), entry] };
-    const { db, fb } = window;
-    try { await fb.setDoc(fb.doc(db, 'quotes', quote.id), updated); }
-    catch(e) { alert('링크 생성 실패: ' + e.message); return null; }
+  const generateShareLink=async quote=>{
+    const token=genToken();
+    const entry={at:nowIso(),action:'공유 링크 생성'};
+    const updated={...quote,shareToken:token,history:[...(quote.history||[]),entry]};
+    const{db,fb}=window;
+    try{await fb.setDoc(fb.doc(db,'quotes',quote.id),updated);}
+    catch(e){alert('링크 생성 실패: '+e.message);return null;}
     return token;
   };
 
-  return (
+  const ROLE_BADGE={admin:{bg:'#111',label:'관리자'},editor:{bg:'#2d6a4f',label:'편집자'},viewer:{bg:'#555',label:'열람자'}};
+  const rb=ROLE_BADGE[memberRole]||ROLE_BADGE.viewer;
+
+  return(
     <div style={{display:'flex',minHeight:'100vh'}}>
       {sideOpen&&<div className="sidebar-backdrop no-print" onClick={()=>setSideOpen(false)}/>}
-      <Sidebar open={sideOpen} page={page} setPage={navTo} quotes={quotes} company={company} openSettings={()=>setShowSettings(true)}/>
+      <Sidebar open={sideOpen} page={page} setPage={navTo} quotes={quotes} company={company}
+        openSettings={()=>setShowSettings(true)} onLogout={()=>window.fbAuth.signOut()}
+        memberRole={memberRole} userEmail={user?.email} canEdit={canEdit}/>
       <div className="main-wrap" style={{flex:1,marginLeft:sideOpen?250:0,transition:'margin .25s',minWidth:0}}>
-        <header className="topbar no-print" style={{height:58,background:'#fff',borderBottom:'1px solid #e8e8e8',display:'flex',alignItems:'center',padding:'0 24px',gap:14,position:'sticky',top:0,zIndex:50}}>
-          <button onClick={()=>setSideOpen(!sideOpen)} style={{border:'none',background:'none',fontSize:20,color:'#555',lineHeight:1,padding:4}}>☰</button>
-          <span style={{fontSize:15,fontWeight:600,color:'#111'}}>
+        <header className="topbar no-print" style={{height:58,background:'#fff',borderBottom:'1px solid #e8e8e8',display:'flex',alignItems:'center',padding:'0 24px',gap:10,position:'sticky',top:0,zIndex:50}}>
+          <button onClick={()=>setSideOpen(!sideOpen)} style={{border:'none',background:'none',fontSize:20,color:'#555',lineHeight:1,padding:4,flexShrink:0}}>☰</button>
+          <span style={{fontSize:15,fontWeight:600,color:'#111',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
             {{dashboard:'대시보드',list:'견적 목록',new:'새 견적서 작성',edit:'견적서 수정',detail:'견적서 상세'}[page]}
           </span>
-          <div style={{flex:1}}/>
-          <span style={{fontSize:12,color:'#bbb'}}>{new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}</span>
-          <button onClick={()=>window.fbAuth.signOut()} style={{border:'1px solid #e8e8e8',background:'#fff',color:'#999',fontSize:11,padding:'5px 12px',borderRadius:5}}>로그아웃</button>
+          <span style={{fontSize:11,background:rb.bg,color:'#fff',borderRadius:4,padding:'2px 8px',fontWeight:600,flexShrink:0}}>{rb.label}</span>
+          <span style={{fontSize:12,color:'#bbb',flexShrink:0,display:'none'}} className="col-hide-mobile">{new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}</span>
         </header>
         <main style={{padding:'24px 28px'}}>
-          {page==='dashboard' && <Dashboard quotes={quotes} setPage={setPage} setSelectedId={setSelectedId}/>}
-          {page==='list'      && <QuoteList quotes={quotes} setPage={setPage} setSelectedId={setSelectedId} deleteQuote={deleteQuote} updateStatus={updateStatus}/>}
-          {(page==='new'||page==='edit') && <QuoteForm initial={page==='edit'?selected:null} onSave={saveQuote} setPage={setPage}/>}
-          {page==='detail' && selected &&
+          {page==='dashboard'&&<Dashboard quotes={quotes} setPage={setPage} setSelectedId={setSelectedId}/>}
+          {page==='list'&&<QuoteList quotes={quotes} setPage={setPage} setSelectedId={setSelectedId}
+            deleteQuote={deleteQuote} updateStatus={updateStatus} isAdmin={isAdmin} canEdit={canEdit}/>}
+          {(page==='new'||page==='edit')&&canEdit&&
+            <QuoteForm initial={page==='edit'?selected:null} onSave={saveQuote} setPage={setPage}/>}
+          {(page==='new'||page==='edit')&&!canEdit&&
+            <div style={{textAlign:'center',padding:60,color:'#aaa',fontSize:14}}>편집 권한이 없습니다.</div>}
+          {page==='detail'&&selected&&
             <QuoteDetail quote={selected} company={company} setPage={setPage}
-              deleteQuote={deleteQuote} updateStatus={updateStatus} generateShareLink={generateShareLink}/>}
+              deleteQuote={deleteQuote} updateStatus={updateStatus} generateShareLink={generateShareLink}
+              isAdmin={isAdmin} canEdit={canEdit}/>}
         </main>
       </div>
-      {showSettings && <SettingsModal company={company} onSave={saveCompany} onClose={()=>setShowSettings(false)}/>}
+      {showSettings&&<SettingsModal company={company} onSave={saveCompany} onClose={()=>setShowSettings(false)} isAdmin={isAdmin} currentUser={user}/>}
     </div>
   );
 }
@@ -723,9 +745,9 @@ function ManagementApp({user}) {
 /* ══════════════════════════════════════
    SIDEBAR
 ══════════════════════════════════════ */
-function Sidebar({open, page, setPage, quotes, company, openSettings}) {
-  const pending = quotes.filter(q=>q.status==='pending').length;
-  return (
+function Sidebar({open,page,setPage,quotes,company,openSettings,onLogout,memberRole,userEmail,canEdit}){
+  const pending=quotes.filter(q=>q.status==='pending').length;
+  return(
     <aside className="no-print" style={{position:'fixed',top:0,left:0,bottom:0,width:250,background:'#fff',borderRight:'1px solid #e8e8e8',transform:open?'translateX(0)':'translateX(-250px)',transition:'transform .25s',zIndex:100,display:'flex',flexDirection:'column'}}>
       <div style={{padding:'22px 20px 18px',borderBottom:'1px solid #f0f0f0'}}>
         <div className="logo-font" style={{fontSize:20,fontWeight:600,color:'#111',marginBottom:3}}>{company.nameEn}</div>
@@ -735,7 +757,7 @@ function Sidebar({open, page, setPage, quotes, company, openSettings}) {
         {[
           {id:'dashboard',icon:'📊',label:'대시보드'},
           {id:'list',     icon:'📋',label:'견적 목록',badge:pending||null},
-          {id:'new',      icon:'✏️',label:'새 견적서 작성'},
+          ...(canEdit?[{id:'new',icon:'✏️',label:'새 견적서 작성'}]:[]),
         ].map(m=>(
           <button key={m.id} onClick={()=>setPage(m.id)}
             style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:6,border:'none',background:page===m.id?'#f5f5f5':'transparent',color:page===m.id?'#111':'#666',fontWeight:page===m.id?600:400,fontSize:14,marginBottom:2,textAlign:'left',transition:'all .15s'}}>
@@ -755,9 +777,9 @@ function Sidebar({open, page, setPage, quotes, company, openSettings}) {
         })}
       </nav>
       <div style={{borderTop:'1px solid #f0f0f0'}}>
-        <button onClick={openSettings} style={{width:'100%',padding:'13px 16px',border:'none',background:'none',textAlign:'left',fontSize:13,color:'#888',display:'flex',alignItems:'center',gap:8}}>
-          ⚙️ 회사 정보 설정
-        </button>
+        {userEmail&&<div style={{padding:'10px 16px 4px',fontSize:11,color:'#bbb',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{userEmail}</div>}
+        <button onClick={openSettings} style={{width:'100%',padding:'10px 16px',border:'none',background:'none',textAlign:'left',fontSize:13,color:'#888',display:'flex',alignItems:'center',gap:8}}>⚙️ 설정</button>
+        <button onClick={onLogout} style={{width:'100%',padding:'10px 16px 14px',border:'none',background:'none',textAlign:'left',fontSize:13,color:'#aaa',display:'flex',alignItems:'center',gap:8}}>🚪 로그아웃</button>
       </div>
     </aside>
   );
@@ -838,7 +860,7 @@ function Dashboard({quotes, setPage, setSelectedId}) {
 /* ══════════════════════════════════════
    QUOTE LIST
 ══════════════════════════════════════ */
-function QuoteList({quotes, setPage, setSelectedId, deleteQuote, updateStatus}) {
+function QuoteList({quotes,setPage,setSelectedId,deleteQuote,updateStatus,isAdmin,canEdit}){
   const [srch, setSrch]=useState('');
   const [sf,   setSf]  =useState('all');
   const [sort, setSort]=useState('date_desc');
@@ -866,7 +888,7 @@ function QuoteList({quotes, setPage, setSelectedId, deleteQuote, updateStatus}) 
           <option value="amt_desc">금액 높은순</option>
           <option value="amt_asc">금액 낮은순</option>
         </select>
-        <button onClick={()=>setPage('new')} style={{padding:'8px 18px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:13,fontWeight:600,whiteSpace:'nowrap'}}>+ 새 견적서</button>
+        {canEdit&&<button onClick={()=>setPage('new')} style={{padding:'8px 18px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:13,fontWeight:600,whiteSpace:'nowrap'}}>+ 새 견적서</button>}
       </div>
       <div style={{background:'#fff',borderRadius:8,border:'1px solid #e8e8e8',overflow:'hidden'}}>
         <table style={{width:'100%',borderCollapse:'collapse'}}>
@@ -902,10 +924,10 @@ function QuoteList({quotes, setPage, setSelectedId, deleteQuote, updateStatus}) 
                     <span style={{fontSize:11,background:s.bg,color:s.color,borderRadius:4,padding:'3px 9px',fontWeight:600}}>{s.label}</span>
                   </td>
                   <td style={{padding:'12px 10px'}} onClick={e=>e.stopPropagation()}>
-                    <button onClick={()=>deleteQuote(q.id)}
+                    {isAdmin&&<button onClick={()=>deleteQuote(q.id)}
                       style={{border:'none',background:'none',color:'#ddd',fontSize:15,cursor:'pointer',padding:3,lineHeight:1}}
                       onMouseEnter={e=>e.target.style.color='#e53e3e'}
-                      onMouseLeave={e=>e.target.style.color='#ddd'}>✕</button>
+                      onMouseLeave={e=>e.target.style.color='#ddd'}>✕</button>}
                   </td>
                 </tr>
               );
@@ -1313,7 +1335,7 @@ function QuoteDocument({quote, company}) {
 /* ══════════════════════════════════════
    QUOTE DETAIL
 ══════════════════════════════════════ */
-function QuoteDetail({quote, company, setPage, deleteQuote, updateStatus, generateShareLink}) {
+function QuoteDetail({quote,company,setPage,deleteQuote,updateStatus,generateShareLink,isAdmin,canEdit}){
   const s = STATUS_MAP[quote.status];
   const [showShare,   setShowShare]   = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -1337,9 +1359,9 @@ function QuoteDetail({quote, company, setPage, deleteQuote, updateStatus, genera
           style={{padding:'7px 11px', border:'1px solid #e0e0e0', borderRadius:6, fontSize:12, background:'#fff', outline:'none', fontFamily:'inherit', cursor:'pointer'}}>
           {Object.entries(STATUS_MAP).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
         </select>
-        <button onClick={()=>setPage('edit')} style={{padding:'7px 15px', background:'#f5f5f5', color:'#555', border:'none', borderRadius:6, fontSize:12, fontWeight:600}}>✏️ 수정</button>
+        {canEdit&&<button onClick={()=>setPage('edit')} style={{padding:'7px 15px',background:'#f5f5f5',color:'#555',border:'none',borderRadius:6,fontSize:12,fontWeight:600}}>✏️ 수정</button>}
         <button onClick={()=>window.print()} style={{padding:'7px 15px', background:'#111', color:'#fff', border:'none', borderRadius:6, fontSize:12, fontWeight:600}}>🖨️ 인쇄 / PDF</button>
-        <button onClick={()=>deleteQuote(quote.id)} style={{padding:'7px 13px', background:'#fff0f0', color:'#c53030', border:'1px solid #fed7d7', borderRadius:6, fontSize:12, fontWeight:600}}>삭제</button>
+        {isAdmin&&<button onClick={()=>deleteQuote(quote.id)} style={{padding:'7px 13px',background:'#fff0f0',color:'#c53030',border:'1px solid #fed7d7',borderRadius:6,fontSize:12,fontWeight:600}}>삭제</button>}
       </div>
 
       {showHistory && <HistoryPanel history={quote.history||[]} onClose={()=>setShowHistory(false)}/>}
@@ -1451,51 +1473,161 @@ function ShareModal({quote, generateShareLink, onClose}) {
 /* ══════════════════════════════════════
    SETTINGS MODAL
 ══════════════════════════════════════ */
-function SettingsModal({company, onSave, onClose}) {
-  const [form, setForm] = useState({...company});
-  const upd = (f,v) => setForm(p=>({...p,[f]:v}));
-
-  const Field = ({lbl,f,ph}) => (
+function SettingsModal({company,onSave,onClose,isAdmin,currentUser}){
+  const[form,setForm]=useState({...company});
+  const[tab,setTab]=useState('company');
+  const[members,setMembers]=useState([]);
+  const[newEmail,setNewEmail]=useState('');
+  const[newPw,setNewPw]=useState('');
+  const[newRole,setNewRole]=useState('editor');
+  const[newName,setNewName]=useState('');
+  const[addErr,setAddErr]=useState('');
+  const[adding,setAdding]=useState(false);
+  const upd=(f,v)=>setForm(p=>({...p,[f]:v}));
+  const Field=({lbl,f,ph})=>(
     <div>
       <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>{lbl}</label>
       <input value={form[f]||''} onChange={e=>upd(f,e.target.value)} placeholder={ph}
-        style={{width:'100%',padding:'8px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}/>
+        style={{width:'100%',padding:'8px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}
+        onFocus={e=>e.target.style.borderColor='#111'} onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
     </div>
   );
-
-  return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onClose}>
-      <div style={{background:'#fff',borderRadius:10,padding:'28px',width:580,maxHeight:'85vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+  useEffect(()=>{
+    if(!isAdmin||tab!=='team')return;
+    const{db,fb}=window;
+    (async()=>{try{const s=await fb.getDocs(fb.collection(db,'members'));setMembers(s.docs.map(d=>d.data()).sort((a,b)=>a.email.localeCompare(b.email)));}catch(e){}})();
+  },[isAdmin,tab]);
+  const addMember=async()=>{
+    if(!newEmail||!newPw){setAddErr('이메일과 비밀번호를 입력해주세요');return;}
+    setAdding(true);setAddErr('');
+    try{
+      const cred=await window.fbAuth2.createUserWithEmailAndPassword(newEmail,newPw);
+      const uid=cred.user.uid;
+      const rec={uid,email:newEmail,role:newRole,name:newName||newEmail,createdAt:nowIso()};
+      const{db,fb}=window;
+      await fb.setDoc(fb.doc(db,'members',uid),rec);
+      setMembers(p=>[...p,rec]);
+      setNewEmail('');setNewPw('');setNewName('');setNewRole('editor');
+    }catch(ex){
+      setAddErr(ex.code==='auth/email-already-in-use'?'이미 존재하는 이메일입니다':
+        ex.code==='auth/weak-password'?'비밀번호는 6자 이상이어야 합니다':'추가 실패: '+ex.message);
+    }
+    setAdding(false);
+  };
+  const changeRole=async(uid,role)=>{
+    const{db,fb}=window;
+    try{await fb.setDoc(fb.doc(db,'members',uid),{role},{merge:true});setMembers(p=>p.map(m=>m.uid===uid?{...m,role}:m));}
+    catch(e){alert('변경 실패: '+e.message);}
+  };
+  const ROLE_LABEL={admin:'관리자',editor:'편집자',viewer:'열람자'};
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px'}} onClick={onClose}>
+      <div style={{background:'#fff',borderRadius:10,padding:'28px',width:580,maxWidth:'100%',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-          <h3 style={{fontSize:16,fontWeight:600,color:'#111'}}>회사 정보 설정</h3>
+          <h3 style={{fontSize:16,fontWeight:600,color:'#111'}}>⚙️ 설정</h3>
           <button onClick={onClose} style={{border:'none',background:'none',fontSize:20,color:'#aaa',cursor:'pointer',lineHeight:1}}>✕</button>
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:16}}>
-          <Field lbl="회사명 (영문)"   f="nameEn"     ph="DAWON"/>
-          <Field lbl="회사명 (국문)"   f="nameKo"     ph="다원"/>
-          <Field lbl="사업자 번호"     f="bizNo"      ph="000-00-00000"/>
-          <Field lbl="대표자"          f="ceo"        ph="홍길동"/>
-          <div style={{gridColumn:'1/-1'}}><Field lbl="주소 1"       f="addr"       ph="서울시 송파구 법원로 8길 8, SKV1 205호"/></div>
-          <div style={{gridColumn:'1/-1'}}><Field lbl="주소 2 (선택)" f="addr2"      ph="부산시 동래구 명륜로 49, 센트럴빌딩 5층"/></div>
-          <Field lbl="웹사이트"        f="web"        ph="www.dawonstudio.com"/>
-          <Field lbl="전화번호"        f="tel"        ph="051-861-1330"/>
-          <Field lbl="이메일"          f="email"      ph="dawonplan@naver.com"/>
-          <Field lbl="은행 계좌"       f="bank"       ph="우리은행 1002-446-678649"/>
-          <Field lbl="예금주"          f="bankHolder" ph="홍길동"/>
+        <div style={{display:'flex',gap:4,marginBottom:22,borderBottom:'1px solid #e8e8e8'}}>
+          {[{id:'company',l:'회사 정보'},...(isAdmin?[{id:'team',l:'팀원 관리'}]:[])].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              style={{padding:'8px 16px',border:'none',background:'none',fontSize:13,fontWeight:tab===t.id?600:400,color:tab===t.id?'#111':'#aaa',borderBottom:tab===t.id?'2px solid #111':'2px solid transparent',marginBottom:-1,cursor:'pointer'}}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+        {tab==='company'&&(
+          <>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:16}}>
+              <Field lbl="회사명 (영문)"   f="nameEn"     ph="DAWON"/>
+              <Field lbl="회사명 (국문)"   f="nameKo"     ph="다원"/>
+              <Field lbl="사업자 번호"     f="bizNo"      ph="000-00-00000"/>
+              <Field lbl="대표자"          f="ceo"        ph="홍길동"/>
+              <div style={{gridColumn:'1/-1'}}><Field lbl="주소 1"        f="addr"       ph="서울시 송파구 법원로 8길 8, SKV1 205호"/></div>
+              <div style={{gridColumn:'1/-1'}}><Field lbl="주소 2 (선택)" f="addr2"      ph="부산시 동래구 명륜로 49, 센트럴빌딩 5층"/></div>
+              <Field lbl="웹사이트"  f="web"        ph="www.dawonstudio.com"/>
+              <Field lbl="전화번호"  f="tel"        ph="051-861-1330"/>
+              <Field lbl="이메일"    f="email"      ph="dawonplan@naver.com"/>
+              <Field lbl="은행 계좌" f="bank"       ph="우리은행 1002-446-678649"/>
+              <Field lbl="예금주"    f="bankHolder" ph="홍길동"/>
+              <div>
+                <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>강조 색상</label>
+                <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                  <input type="color" value={form.accentColor||'#c8232c'} onChange={e=>upd('accentColor',e.target.value)}
+                    style={{width:40,height:36,border:'1px solid #e0e0e0',borderRadius:6,cursor:'pointer',padding:2}}/>
+                  <input value={form.accentColor||''} onChange={e=>upd('accentColor',e.target.value)} placeholder="#c8232c"
+                    style={{flex:1,padding:'8px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}
+                    onFocus={e=>e.target.style.borderColor='#111'} onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
+                </div>
+              </div>
+            </div>
+            <div style={{display:'flex',justifyContent:'flex-end',gap:10}}>
+              <button onClick={onClose} style={{padding:'9px 20px',background:'#f5f5f5',color:'#555',border:'none',borderRadius:6,fontSize:13,fontWeight:600,cursor:'pointer'}}>취소</button>
+              <button onClick={()=>onSave(form)} style={{padding:'9px 22px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:13,fontWeight:600,cursor:'pointer'}}>저장</button>
+            </div>
+          </>
+        )}
+        {tab==='team'&&isAdmin&&(
           <div>
-            <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>강조 색상</label>
-            <div style={{display:'flex',gap:8,alignItems:'center'}}>
-              <input type="color" value={form.accentColor||'#c8232c'} onChange={e=>upd('accentColor',e.target.value)}
-                style={{width:40,height:36,border:'1px solid #e0e0e0',borderRadius:6,cursor:'pointer',padding:2}}/>
-              <input value={form.accentColor||''} onChange={e=>upd('accentColor',e.target.value)} placeholder="#c8232c"
-                style={{flex:1,padding:'8px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}/>
+            <div style={{marginBottom:24}}>
+              <div style={{fontSize:12,fontWeight:600,color:'#333',marginBottom:10}}>팀원 목록</div>
+              {members.length===0&&<div style={{fontSize:12,color:'#ccc',padding:'12px 0'}}>팀원이 없습니다</div>}
+              {members.map(m=>(
+                <div key={m.uid} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:m.uid===currentUser?.uid?'#f9f9f9':'#fff',borderRadius:6,marginBottom:6,border:'1px solid #f0f0f0'}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,color:'#111',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name||m.email}</div>
+                    <div style={{fontSize:11,color:'#aaa'}}>{m.email}</div>
+                  </div>
+                  {m.uid===currentUser?.uid?(
+                    <span style={{fontSize:11,background:'#111',color:'#fff',borderRadius:4,padding:'2px 8px',fontWeight:600,flexShrink:0}}>나</span>
+                  ):(
+                    <select value={m.role} onChange={e=>changeRole(m.uid,e.target.value)}
+                      style={{padding:'5px 8px',border:'1px solid #e0e0e0',borderRadius:5,fontSize:12,background:'#fff',outline:'none',fontFamily:'inherit',cursor:'pointer',flexShrink:0}}>
+                      {Object.entries(ROLE_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+                    </select>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div style={{borderTop:'1px solid #f0f0f0',paddingTop:20}}>
+              <div style={{fontSize:12,fontWeight:600,color:'#333',marginBottom:12}}>팀원 초대</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                <div>
+                  <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:4}}>이름 (선택)</label>
+                  <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="홍길동"
+                    style={{width:'100%',padding:'8px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}
+                    onFocus={e=>e.target.style.borderColor='#111'} onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:4}}>권한</label>
+                  <select value={newRole} onChange={e=>setNewRole(e.target.value)}
+                    style={{width:'100%',padding:'8px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,background:'#fff',outline:'none',fontFamily:'inherit'}}>
+                    <option value="admin">관리자</option><option value="editor">편집자</option><option value="viewer">열람자</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:4}}>이메일 *</label>
+                  <input type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="team@dawonstudio.com"
+                    style={{width:'100%',padding:'8px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}
+                    onFocus={e=>e.target.style.borderColor='#111'} onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:4}}>초기 비밀번호 *</label>
+                  <input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="6자 이상"
+                    style={{width:'100%',padding:'8px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}
+                    onFocus={e=>e.target.style.borderColor='#111'} onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
+                </div>
+              </div>
+              {addErr&&<div style={{fontSize:12,color:'#e53e3e',marginBottom:10,background:'#fff5f5',border:'1px solid #fed7d7',borderRadius:6,padding:'8px 12px'}}>{addErr}</div>}
+              <button onClick={addMember} disabled={adding}
+                style={{width:'100%',padding:'10px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:13,fontWeight:600,cursor:adding?'wait':'pointer'}}>
+                {adding?'추가 중...':'+ 팀원 추가'}
+              </button>
+              <div style={{fontSize:11,color:'#aaa',marginTop:8,lineHeight:1.6}}>
+                * 추가된 팀원은 해당 이메일과 비밀번호로 로그인할 수 있습니다.
+              </div>
             </div>
           </div>
-        </div>
-        <div style={{display:'flex',justifyContent:'flex-end',gap:10}}>
-          <button onClick={onClose}       style={{padding:'9px 20px',background:'#f5f5f5',color:'#555',border:'none',borderRadius:6,fontSize:13,fontWeight:600,cursor:'pointer'}}>취소</button>
-          <button onClick={()=>onSave(form)} style={{padding:'9px 22px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:13,fontWeight:600,cursor:'pointer'}}>저장</button>
-        </div>
+        )}
       </div>
     </div>
   );
