@@ -144,9 +144,7 @@ button{cursor:pointer}
   .detail-page table td{padding:6px 5px!important;font-size:10px!important}
 }
 
-/* ══════════════════════════════════════
-   외부 CSS (quotation-system.css) 병합
-══════════════════════════════════════ */
+/* ══ quotation-system.css 병합 ══ */
 /* ══════════════════════════════════════
    앱 레이아웃
 ══════════════════════════════════════ */
@@ -368,10 +366,10 @@ button{cursor:pointer}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {
-  getFirestore, collection, getDocs, getDoc, doc,
-  setDoc, deleteDoc, onSnapshot
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, getDocs, getDoc, doc, setDoc, deleteDoc, onSnapshot }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDkpCQGVS3DwWBffXPX747BG2sUUu6Np9w",
@@ -382,10 +380,23 @@ const firebaseConfig = {
   appId: "1:629981377452:web:f5df95389aaa5a83f24009"
 };
 
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
+const app  = initializeApp(firebaseConfig);
+const app2 = initializeApp(firebaseConfig, 'Secondary');
+const db   = getFirestore(app);
+const auth = getAuth(app);
+const auth2= getAuth(app2);
+
 window.db  = db;
 window.fb  = { collection, getDocs, getDoc, doc, setDoc, deleteDoc, onSnapshot };
+window.auth = auth;
+window.fbAuth = {
+  signInWithEmailAndPassword: (e,p) => signInWithEmailAndPassword(auth,e,p),
+  signOut: () => signOut(auth),
+  onAuthStateChanged: cb => onAuthStateChanged(auth, cb),
+};
+window.fbAuth2 = {
+  createUserWithEmailAndPassword: (e,p) => createUserWithEmailAndPassword(auth2,e,p),
+};
 window.dbReady = Promise.resolve();
 </script>
 
@@ -470,24 +481,78 @@ function LoadingScreen() {
 }
 
 /* ══════════════════════════════════════
+   LOGIN SCREEN
+══════════════════════════════════════ */
+function LoginScreen(){
+  const[email,setEmail]=useState('');
+  const[pw,setPw]=useState('');
+  const[loading,setLoading]=useState(false);
+  const[err,setErr]=useState('');
+  const handleLogin=async e=>{
+    e.preventDefault();
+    if(!email||!pw){setErr('이메일과 비밀번호를 입력해주세요');return;}
+    setLoading(true);setErr('');
+    try{ await window.fbAuth.signInWithEmailAndPassword(email,pw); }
+    catch(ex){
+      setErr(ex.code==='auth/invalid-credential'||ex.code==='auth/wrong-password'?'이메일 또는 비밀번호가 올바르지 않습니다':
+        ex.code==='auth/user-not-found'?'존재하지 않는 계정입니다':
+        ex.code==='auth/too-many-requests'?'잠시 후 다시 시도해주세요':'로그인 실패: '+ex.message);
+    }
+    setLoading(false);
+  };
+  return(
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',background:'#f4f5f7',padding:'20px'}}>
+      <div style={{background:'#fff',borderRadius:12,padding:'44px 40px',width:'100%',maxWidth:400,border:'1px solid #e8e8e8',boxShadow:'0 4px 24px rgba(0,0,0,.06)'}}>
+        <div className="logo-font" style={{fontSize:26,fontWeight:600,color:'#111',marginBottom:4}}>DAWON</div>
+        <div style={{fontSize:13,color:'#aaa',marginBottom:32}}>견적 관리 시스템</div>
+        <form onSubmit={handleLogin}>
+          <div style={{marginBottom:14}}>
+            <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>이메일</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="email@dawonstudio.com"
+              style={{width:'100%',padding:'10px 12px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}
+              onFocus={e=>e.target.style.borderColor='#111'} onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
+          </div>
+          <div style={{marginBottom:20}}>
+            <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>비밀번호</label>
+            <input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="비밀번호 입력"
+              style={{width:'100%',padding:'10px 12px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}
+              onFocus={e=>e.target.style.borderColor='#111'} onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
+          </div>
+          {err&&<div style={{fontSize:12,color:'#e53e3e',marginBottom:14,background:'#fff5f5',border:'1px solid #fed7d7',borderRadius:6,padding:'8px 12px'}}>{err}</div>}
+          <button type="submit" disabled={loading}
+            style={{width:'100%',padding:'11px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:14,fontWeight:600,cursor:loading?'wait':'pointer'}}>
+            {loading?'로그인 중...':'로그인'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════
    APP ROOT
 ══════════════════════════════════════ */
 function App() {
-  const [ready, setReady] = useState(false);
+  const[ready,setReady]=useState(false);
+  const[authReady,setAuthReady]=useState(false);
+  const[user,setUser]=useState(null);
 
-  useEffect(() => {
+  useEffect(()=>{
     let t;
-    const check = () => {
-      if (window.db && window.fb) { setReady(true); }
-      else { t = setTimeout(check, 50); }
-    };
-    check();
-    return () => clearTimeout(t);
-  }, []);
+    const check=()=>{ if(window.db&&window.fb&&window.fbAuth){setReady(true);} else t=setTimeout(check,50); };
+    check(); return()=>clearTimeout(t);
+  },[]);
 
-  if (!ready) return <LoadingScreen />;
-  if (READONLY_ID) return <ReadOnlyApp quoteId={READONLY_ID} token={READONLY_TOKEN} />;
-  return <ManagementApp />;
+  useEffect(()=>{
+    if(!ready)return;
+    const unsub=window.fbAuth.onAuthStateChanged(u=>{setUser(u);setAuthReady(true);});
+    return unsub;
+  },[ready]);
+
+  if(!ready||!authReady)return<LoadingScreen/>;
+  if(READONLY_ID)return<ReadOnlyApp quoteId={READONLY_ID} token={READONLY_TOKEN}/>;
+  if(!user)return<LoginScreen/>;
+  return<ManagementApp user={user}/>;
 }
 
 /* ══════════════════════════════════════
@@ -544,7 +609,7 @@ function ReadOnlyApp({ quoteId, token }) {
 /* ══════════════════════════════════════
    MANAGEMENT APP
 ══════════════════════════════════════ */
-function ManagementApp() {
+function ManagementApp({user}) {
   const [quotes,       setQuotes]       = useState([]);
   const [company,      setCompany]      = useState(DEFAULT_COMPANY);
   const [page,         setPage]         = useState('dashboard');
@@ -639,6 +704,7 @@ function ManagementApp() {
           </span>
           <div style={{flex:1}}/>
           <span style={{fontSize:12,color:'#bbb'}}>{new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}</span>
+          <button onClick={()=>window.fbAuth.signOut()} style={{border:'1px solid #e8e8e8',background:'#fff',color:'#999',fontSize:11,padding:'5px 12px',borderRadius:5}}>로그아웃</button>
         </header>
         <main style={{padding:'24px 28px'}}>
           {page==='dashboard' && <Dashboard quotes={quotes} setPage={setPage} setSelectedId={setSelectedId}/>}
