@@ -7,6 +7,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap');
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
@@ -52,8 +54,10 @@ button{cursor:pointer}
     page-break-inside:avoid;break-inside:avoid;
     background:#fff!important;overflow:hidden!important;
     border:none!important;border-radius:0!important;
-    margin:0!important;padding:0!important;box-shadow:none!important;
+    margin:0!important;padding:14mm 18mm!important;box-shadow:none!important;
   }
+  .cover-logo-el{left:0!important;bottom:14mm!important}
+  .cover-date-el{right:0!important;bottom:14mm!important}
   .detail-page{
     display:block!important;
     width:297mm!important;height:210mm!important;
@@ -530,6 +534,24 @@ function LoginScreen(){
 }
 
 /* ══════════════════════════════════════
+   PDF 저장 유틸 (html2canvas + jsPDF)
+══════════════════════════════════════ */
+async function savePDF(quoteId, projectTitle) {
+  const { jsPDF } = window.jspdf;
+  const pages = document.querySelectorAll('.cover-page, .detail-page');
+  if (!pages.length) { alert('저장할 페이지를 찾을 수 없습니다.'); return; }
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  for (let i = 0; i < pages.length; i++) {
+    if (i > 0) doc.addPage();
+    const canvas = await html2canvas(pages[i], {
+      scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false,
+    });
+    doc.addImage(canvas.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 297, 210);
+  }
+  doc.save(`${projectTitle||quoteId||'견적서'}_견적서.pdf`);
+}
+
+/* ══════════════════════════════════════
    APP ROOT
 ══════════════════════════════════════ */
 function App() {
@@ -559,9 +581,10 @@ function App() {
    READ-ONLY APP  (공유 링크 전용)
 ══════════════════════════════════════ */
 function ReadOnlyApp({ quoteId, token }) {
-  const [quote,   setQuote]   = useState(null);
-  const [company, setCompany] = useState(DEFAULT_COMPANY);
-  const [error,   setError]   = useState(null);
+  const [quote,      setQuote]      = useState(null);
+  const [company,    setCompany]    = useState(DEFAULT_COMPANY);
+  const [error,      setError]      = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   useEffect(() => {
     const { db, fb } = window;
@@ -595,9 +618,11 @@ function ReadOnlyApp({ quoteId, token }) {
             <div className="logo-font" style={{fontSize:18,fontWeight:600,color:'#111'}}>DAWON</div>
             <div style={{fontSize:11,color:'#aaa',marginTop:2}}>견적서 열람 전용 · 수정 불가</div>
           </div>
-          <button onClick={()=>window.print()}
-            style={{padding:'9px 22px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:13,fontWeight:600}}>
-            🖨️ 인쇄 / PDF
+          <button
+            disabled={pdfLoading}
+            onClick={async()=>{setPdfLoading(true);await savePDF(quote.id,quote.projectTitle);setPdfLoading(false);}}
+            style={{padding:'9px 22px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:13,fontWeight:600,cursor:pdfLoading?'wait':'pointer'}}>
+            {pdfLoading?'⏳ 생성 중...':'📄 PDF 저장 (A4)'}
           </button>
         </div>
         <QuoteDocument quote={quote} company={company} />
@@ -945,6 +970,25 @@ function QuoteList({quotes,setPage,setSelectedId,deleteQuote,updateStatus,isAdmi
 }
 
 /* ══════════════════════════════════════
+   입력 필드 컴포넌트
+   ※ QuoteForm 외부에 정의해야 렌더링 시 재마운트 방지 (input 포커스 유지)
+══════════════════════════════════════ */
+function InpField({lbl,val,onChange,ph,err,required}) {
+  return (
+    <div>
+      <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>
+        {lbl}{required&&<span style={{color:'#e53e3e'}}> *</span>}
+      </label>
+      <input value={val} onChange={e=>onChange(e.target.value)} placeholder={ph}
+        style={{width:'100%',padding:'9px 11px',border:`1px solid ${err?'#e53e3e':'#e0e0e0'}`,borderRadius:6,fontSize:13,outline:'none'}}
+        onFocus={e=>e.target.style.borderColor='#111'}
+        onBlur={e=>e.target.style.borderColor=err?'#e53e3e':'#e0e0e0'}/>
+      {err&&<div style={{fontSize:11,color:'#e53e3e',marginTop:3}}>{err}</div>}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════
    QUOTE FORM  (3-step)
 ══════════════════════════════════════ */
 function QuoteForm({initial, onSave, setPage}) {
@@ -955,6 +999,7 @@ function QuoteForm({initial, onSave, setPage}) {
   const [validDays,  setValidDays] = useState(15);
   const [items,      setItems]     = useState(initial?.items||[]);
   const [vatExcluded,setVat]       = useState(initial?.vatExcluded??true);
+  const [truncUnit,  setTruncUnit] = useState(initial?.truncUnit??0);
   const [notes,      setNotes]     = useState(initial?.notes?.join('\n')||'');
   const [mpDesc,     setMpDesc]    = useState(initial?.manpower?.desc||'');
   const [mpMembers,  setMpMembers] = useState(initial?.manpower?.members||[{exp:'',role:''}]);
@@ -984,7 +1029,7 @@ function QuoteForm({initial, onSave, setPage}) {
       projectTitle: proj, client,
       createdAt:    initial?.createdAt || today(),
       validUntil:   initial?.validUntil || addDays(today(), validDays),
-      items, vatExcluded,
+      items, vatExcluded, truncUnit,
       notes:        notes.split('\n').map(s=>s.trim()).filter(Boolean),
       manpower:     { desc:mpDesc, members:mpMembers.filter(m=>m.role.trim()) },
       history:      [...(initial?.history||[]), entry],
@@ -993,19 +1038,6 @@ function QuoteForm({initial, onSave, setPage}) {
   };
 
   const total = calcTotal(items);
-
-  const Inp = ({lbl,val,onChange,ph,err,required}) => (
-    <div>
-      <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>
-        {lbl}{required&&<span style={{color:'#e53e3e'}}> *</span>}
-      </label>
-      <input value={val} onChange={e=>onChange(e.target.value)} placeholder={ph}
-        style={{width:'100%',padding:'9px 11px',border:`1px solid ${err?'#e53e3e':'#e0e0e0'}`,borderRadius:6,fontSize:13,outline:'none'}}
-        onFocus={e=>e.target.style.borderColor='#111'}
-        onBlur={e=>e.target.style.borderColor=err?'#e53e3e':'#e0e0e0'}/>
-      {err&&<div style={{fontSize:11,color:'#e53e3e',marginTop:3}}>{err}</div>}
-    </div>
-  );
 
   return (
     <div style={{maxWidth:960,margin:'0 auto'}}>
@@ -1024,13 +1056,13 @@ function QuoteForm({initial, onSave, setPage}) {
         <div style={{background:'#fff',borderRadius:8,padding:26,border:'1px solid #e8e8e8'}}>
           <h3 style={{fontSize:14,fontWeight:600,marginBottom:20,color:'#111'}}>프로젝트 및 고객 정보</h3>
           <div style={{marginBottom:18}}>
-            <Inp lbl="프로젝트명" val={proj} onChange={setProj} ph="프로젝트명" err={errs.proj} required/>
+            <InpField lbl="프로젝트명" val={proj} onChange={setProj} ph="프로젝트명" err={errs.proj} required/>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:22}}>
-            <Inp lbl="업체명 (수신처)" val={client.company} onChange={v=>setClient(p=>({...p,company:v}))} ph="(주)회사명" err={errs.company} required/>
-            <Inp lbl="담당자"          val={client.contact} onChange={v=>setClient(p=>({...p,contact:v}))} ph="홍길동"/>
-            <Inp lbl="이메일"          val={client.email}   onChange={v=>setClient(p=>({...p,email:v}))}   ph="email@company.com"/>
-            <Inp lbl="연락처"          val={client.phone}   onChange={v=>setClient(p=>({...p,phone:v}))}   ph="010-0000-0000"/>
+            <InpField lbl="업체명 (수신처)" val={client.company} onChange={v=>setClient(p=>({...p,company:v}))} ph="(주)회사명" err={errs.company} required/>
+            <InpField lbl="담당자"          val={client.contact} onChange={v=>setClient(p=>({...p,contact:v}))} ph="홍길동"/>
+            <InpField lbl="이메일"          val={client.email}   onChange={v=>setClient(p=>({...p,email:v}))}   ph="email@company.com"/>
+            <InpField lbl="연락처"          val={client.phone}   onChange={v=>setClient(p=>({...p,phone:v}))}   ph="010-0000-0000"/>
           </div>
           <div>
             <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:8}}>견적 유효기간</label>
@@ -1115,9 +1147,20 @@ function QuoteForm({initial, onSave, setPage}) {
               ))}
             </div>
             <div style={{borderTop:'1px solid #f0f0f0',paddingTop:12}}>
+              {/* 절사 선택 */}
+              <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:8,flexWrap:'wrap'}}>
+                <span style={{fontSize:11,fontWeight:600,color:'#888',flexShrink:0}}>절사:</span>
+                {[{v:0,l:'없음'},{v:1000,l:'천원'},{v:10000,l:'만원'},{v:100000,l:'십만원'}].map(opt=>(
+                  <button key={opt.v} onClick={()=>setTruncUnit(opt.v)}
+                    style={{padding:'4px 11px',border:`1.5px solid ${truncUnit===opt.v?'#111':'#e0e0e0'}`,borderRadius:5,background:truncUnit===opt.v?'#111':'#fff',color:truncUnit===opt.v?'#fff':'#666',fontSize:11,fontWeight:truncUnit===opt.v?600:400,transition:'all .15s',cursor:'pointer'}}>
+                    {opt.l}
+                  </button>
+                ))}
+                {truncUnit>0&&<span style={{fontSize:11,color:'#aaa',marginLeft:4}}>→ {fmtMoney(Math.floor(total/truncUnit)*truncUnit)}원</span>}
+              </div>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',background:'#111',borderRadius:6}}>
                 <span style={{fontSize:13,fontWeight:600,color:'#fff'}}>총 제작비용{vatExcluded&&' (부가세 별도)'}</span>
-                <span style={{fontSize:18,fontWeight:600,color:'#fff'}}>{fmtMoney(total)}원</span>
+                <span style={{fontSize:18,fontWeight:600,color:'#fff'}}>{fmtMoney(truncUnit>0?Math.floor(total/truncUnit)*truncUnit:total)}원</span>
               </div>
             </div>
           </div>
@@ -1174,8 +1217,8 @@ function QuoteForm({initial, onSave, setPage}) {
               ))}
             </div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'1px dashed #e0e0e0',paddingTop:12}}>
-              <span style={{fontSize:13,color:'#888'}}>총 제작비용{vatExcluded&&' (부가세 별도)'}</span>
-              <span style={{fontSize:22,fontWeight:600,color:'#111'}}>{fmtMoney(total)}원</span>
+              <span style={{fontSize:13,color:'#888'}}>총 제작비용{vatExcluded&&' (부가세 별도)'}{truncUnit>0&&` [${truncUnit>=100000?'십만원':truncUnit>=10000?'만원':'천원'} 절사]`}</span>
+              <span style={{fontSize:22,fontWeight:600,color:'#111'}}>{fmtMoney(truncUnit>0?Math.floor(total/truncUnit)*truncUnit:total)}원</span>
             </div>
           </div>
           <div style={{display:'flex',justifyContent:'space-between'}}>
@@ -1194,8 +1237,10 @@ function QuoteForm({initial, onSave, setPage}) {
    QUOTE DOCUMENT  (재사용 컴포넌트)
 ══════════════════════════════════════ */
 function QuoteDocument({quote, company}) {
-  const total = calcTotal(quote.items);
-  const mp    = quote.manpower;
+  const rawTotal  = calcTotal(quote.items);
+  const truncUnit = quote.truncUnit || 0;
+  const total     = truncUnit > 0 ? Math.floor(rawTotal / truncUnit) * truncUnit : rawTotal;
+  const mp        = quote.manpower;
   return (
     <div className="quote-wrap">
       {/* ─── 표지 ─── */}
@@ -1203,7 +1248,7 @@ function QuoteDocument({quote, company}) {
         background:'#fff', borderRadius:8, border:'1px solid #e8e8e8', marginBottom:4,
         display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
         width:'100%', aspectRatio:'297/210',
-        position:'relative', padding:'48px 80px', overflow:'hidden',
+        position:'relative', padding:'48px 52px', overflow:'hidden',
       }}>
         <div style={{width:1, flex:'1', maxHeight:90, background:'rgba(0,0,0,0.2)'}}/>
         <div style={{textAlign:'center', padding:'36px 0 32px', flexShrink:0}}>
@@ -1214,10 +1259,10 @@ function QuoteDocument({quote, company}) {
           <div style={{fontSize:32, fontWeight:600, color:'#111'}}>견적서</div>
         </div>
         <div style={{width:1, flex:'1', maxHeight:90, background:'rgba(0,0,0,0.2)'}}/>
-        <div className="logo-font" style={{position:'absolute', bottom:36, left:52, fontSize:17, fontWeight:600, color:'#111'}}>
+        <div className="logo-font cover-logo-el" style={{position:'absolute', bottom:36, left:52, fontSize:17, fontWeight:600, color:'#111'}}>
           {company.nameEn}
         </div>
-        <div style={{position:'absolute', bottom:42, right:52, fontSize:11, color:'#aaa'}}>
+        <div className="cover-date-el" style={{position:'absolute', bottom:42, right:52, fontSize:11, color:'#aaa'}}>
           {fmtDateKo(quote.createdAt)}
         </div>
       </div>
@@ -1339,6 +1384,7 @@ function QuoteDetail({quote,company,setPage,deleteQuote,updateStatus,generateSha
   const s = STATUS_MAP[quote.status];
   const [showShare,   setShowShare]   = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [pdfLoading,  setPdfLoading]  = useState(false);
 
   return (
     <div>
@@ -1360,7 +1406,12 @@ function QuoteDetail({quote,company,setPage,deleteQuote,updateStatus,generateSha
           {Object.entries(STATUS_MAP).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
         </select>
         {canEdit&&<button onClick={()=>setPage('edit')} style={{padding:'7px 15px',background:'#f5f5f5',color:'#555',border:'none',borderRadius:6,fontSize:12,fontWeight:600}}>✏️ 수정</button>}
-        <button onClick={()=>window.print()} style={{padding:'7px 15px', background:'#111', color:'#fff', border:'none', borderRadius:6, fontSize:12, fontWeight:600}}>🖨️ 인쇄 / PDF</button>
+        <button
+          disabled={pdfLoading}
+          onClick={async()=>{setPdfLoading(true);await savePDF(quote.id,quote.projectTitle);setPdfLoading(false);}}
+          style={{padding:'7px 15px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:12,fontWeight:600,cursor:pdfLoading?'wait':'pointer'}}>
+          {pdfLoading?'⏳ 생성 중...':'📄 PDF 저장 (A4)'}
+        </button>
         {isAdmin&&<button onClick={()=>deleteQuote(quote.id)} style={{padding:'7px 13px',background:'#fff0f0',color:'#c53030',border:'1px solid #fed7d7',borderRadius:6,fontSize:12,fontWeight:600}}>삭제</button>}
       </div>
 
