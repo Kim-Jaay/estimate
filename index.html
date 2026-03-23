@@ -113,15 +113,15 @@ button{cursor:pointer}
     padding:20px 14px 28px!important;
   }
 
-  /* 테이블 가로 스크롤 + 폰트 축소 */
+  /* 테이블 가로 스크롤 */
   .detail-page table{
-    font-size:11px!important;
+    font-size:20px!important;
     min-width:480px;
   }
   .detail-page table th,
   .detail-page table td{
     padding:8px 7px!important;
-    font-size:11px!important;
+    font-size:20px!important;
   }
   .detail-tbl-wrap{
     overflow-x:auto!important;
@@ -134,7 +134,7 @@ button{cursor:pointer}
   .detail-page .total-row span:last-child{font-size:15px!important}
 
   /* 푸터 텍스트 크기 */
-  .detail-page .footer-info{font-size:9px!important;line-height:1.7!important}
+  .detail-page .footer-info{font-size:15px!important;line-height:1.7!important}
 
   /* 맨파워 멤버 줄바꿈 */
   .detail-page .mp-members{flex-wrap:wrap!important;gap:12px!important}
@@ -143,9 +143,9 @@ button{cursor:pointer}
 @media screen and (max-width: 480px) {
   .cover-page{padding:32px 16px 60px!important;min-height:200px!important}
   .detail-page{padding:16px 12px 24px!important}
-  .detail-page table{min-width:400px;font-size:10px!important}
+  .detail-page table{min-width:400px;font-size:20px!important}
   .detail-page table th,
-  .detail-page table td{padding:6px 5px!important;font-size:10px!important}
+  .detail-page table td{padding:6px 5px!important;font-size:20px!important}
 }
 
 /* ══ quotation-system.css 병합 ══ */
@@ -1252,17 +1252,17 @@ function QuoteDocument({quote, company}) {
       }}>
         <div style={{width:1, flex:'1', maxHeight:90, background:'rgba(0,0,0,0.2)'}}/>
         <div style={{textAlign:'center', padding:'36px 0 32px', flexShrink:0}}>
-          <div style={{fontSize:13, color:'#888', marginBottom:16, fontWeight:400}}>{quote.client.company}</div>
+          <div style={{fontSize:15, color:'#888', marginBottom:16, fontWeight:400}}>{quote.client.company}</div>
           <div style={{fontSize:32, fontWeight:600, color:'#111', lineHeight:1.35, marginBottom:4}}>
             {quote.projectTitle||''}
           </div>
           <div style={{fontSize:32, fontWeight:600, color:'#111'}}>견적서</div>
         </div>
         <div style={{width:1, flex:'1', maxHeight:90, background:'rgba(0,0,0,0.2)'}}/>
-        <div className="logo-font cover-logo-el" style={{position:'absolute', bottom:36, left:52, fontSize:17, fontWeight:600, color:'#111'}}>
+        <div className="logo-font cover-logo-el" style={{position:'absolute', bottom:36, left:52, fontSize:18, fontWeight:600, color:'#111'}}>
           {company.nameEn}
         </div>
-        <div className="cover-date-el" style={{position:'absolute', bottom:42, right:52, fontSize:11, color:'#aaa'}}>
+        <div className="cover-date-el" style={{position:'absolute', bottom:42, right:52, fontSize:15, color:'#aaa'}}>
           {fmtDateKo(quote.createdAt)}
         </div>
       </div>
@@ -1275,21 +1275,21 @@ function QuoteDocument({quote, company}) {
             {quote.projectTitle&&<span style={{borderLeft:'1px solid #999', marginLeft:10, paddingLeft:10}}>견적서</span>}
             {!quote.projectTitle&&'견적서'}
           </h2>
-          <div style={{fontSize:12, color:'#888', textAlign:'right', lineHeight:2}}>
+          <div style={{fontSize:15, color:'#888', textAlign:'right', lineHeight:2}}>
             {fmtDateKo(quote.createdAt)}
           </div>
         </div>
         {quote.projectTitle&&(
-          <div style={{fontSize:12, color:'#888', marginBottom:16}}>{quote.projectTitle}</div>
+          <div style={{fontSize:15, color:'#888', marginBottom:16}}>{quote.projectTitle}</div>
         )}
 
         {/* 항목 테이블 */}
         <div className="detail-tbl-wrap">
-        <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
+        <table style={{width:'100%', borderCollapse:'collapse', fontSize:20}}>
           <thead>
             <tr style={{borderTop:'2px solid #111', borderBottom:'2px solid #111'}}>
               {[['품 명','13%'],['세 부 내 용','52%'],['규격/수량','13%'],['제작비용','22%']].map(([h,w])=>(
-                <th key={h} style={{padding:'11px 14px', textAlign:h==='제작비용'?'right':h==='규격/수량'?'center':'left', fontWeight:600, fontSize:12, width:w}}>
+                <th key={h} style={{padding:'11px 14px', textAlign:h==='제작비용'?'right':h==='규격/수량'?'center':'left', fontWeight:600, fontSize:20, width:w}}>
                   {h}
                 </th>
               ))}
@@ -1298,10 +1298,10 @@ function QuoteDocument({quote, company}) {
           <tbody>
             {quote.items.map((it,idx)=>(
               <tr key={it.id||idx} style={{borderBottom:idx===quote.items.length-1?'none':'1px solid #e8e8e8'}}>
-                <td style={{padding:'14px', fontWeight:600, fontSize:13, color:'#111', verticalAlign:'top'}}>{it.category}</td>
-                <td style={{padding:'14px', fontWeight:500, fontSize:12, color:'#333', lineHeight:1.7, verticalAlign:'top'}}>{it.description}</td>
-                <td style={{padding:'14px', fontSize:12, color:'#666', verticalAlign:'top', textAlign:'center'}}>{it.spec}</td>
-                <td style={{padding:'14px', fontWeight:600, fontSize:13, color:'#111', textAlign:'right', verticalAlign:'top', whiteSpace:'nowrap'}}>
+                <td style={{padding:'14px', fontWeight:600, fontSize:20, color:'#111', verticalAlign:'top'}}>{it.category}</td>
+                <td style={{padding:'14px', fontWeight:500, fontSize:20, color:'#333', lineHeight:1.7, verticalAlign:'top'}}>{it.description}</td>
+                <td style={{padding:'14px', fontSize:20, color:'#666', verticalAlign:'top', textAlign:'center'}}>{it.spec}</td>
+                <td style={{padding:'14px', fontWeight:600, fontSize:20, color:'#111', textAlign:'right', verticalAlign:'top', whiteSpace:'nowrap'}}>
                   {it.cost ? fmtMoney(it.cost) : ''}
                 </td>
               </tr>
@@ -1322,7 +1322,7 @@ function QuoteDocument({quote, company}) {
         {quote.notes?.length>0&&(
           <div style={{marginBottom:24}}>
             {quote.notes.map((n,i)=>(
-              <div key={i} style={{fontSize:12, color:'#555', lineHeight:1.9}}>*{n}</div>
+              <div key={i} style={{fontSize:15, color:'#555', lineHeight:1.9}}>*{n}</div>
             ))}
           </div>
         )}
@@ -1333,7 +1333,7 @@ function QuoteDocument({quote, company}) {
         {(mp?.desc||mp?.members?.length>0)&&(
           <div style={{marginBottom:24}}>
             {mp.desc&&(
-              <div style={{fontSize:12, color:'#333', marginBottom:12, lineHeight:1.8}}>
+              <div style={{fontSize:15, color:'#333', marginBottom:12, lineHeight:1.8}}>
                 <strong style={{fontWeight:600}}>Project Manpower</strong>&nbsp;&nbsp;
                 {mp.desc.split(/([\d]+명|[가-힣]+(?:개월|주))/g).map((part,i)=>
                   /[\d]+명|[가-힣]+(?:개월|주)/.test(part)
@@ -1345,7 +1345,7 @@ function QuoteDocument({quote, company}) {
             {mp.members?.filter(m=>m.role).length>0&&(
               <div className="mp-members" style={{display:'flex', gap:40, paddingTop:4}}>
                 {mp.members.filter(m=>m.role).map((m,i)=>(
-                  <div key={i} style={{fontSize:12, color:'#333'}}>
+                  <div key={i} style={{fontSize:15, color:'#333'}}>
                     <span style={{fontWeight:600}}>해당경력 {m.exp}</span>
                     {m.exp&&<span style={{color:'#bbb', margin:'0 6px'}}>ㅣ</span>}
                     <span>{m.role}</span>
@@ -1360,8 +1360,8 @@ function QuoteDocument({quote, company}) {
         <div style={{borderTop:'2px solid #111', paddingTop:18, marginTop:20}}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-end'}}>
             <div>
-              <div className="logo-font" style={{fontSize:17, fontWeight:600, color:'#111', marginBottom:8}}>{company.nameEn}</div>
-              <div className="footer-info" style={{fontSize:10, color:'#888', lineHeight:1.9}}>
+              <div className="logo-font" style={{fontSize:18, fontWeight:600, color:'#111', marginBottom:8}}>{company.nameEn}</div>
+              <div className="footer-info" style={{fontSize:15, color:'#888', lineHeight:1.9}}>
                 공급자 : {company.nameKo}({company.nameEn})&nbsp;&nbsp;ㅣ&nbsp;&nbsp;사업자 번호 : {company.bizNo}&nbsp;&nbsp;ㅣ&nbsp;&nbsp;대표자 : {company.ceo}<br/>
                 공급자 주소 : {company.addr}{company.addr2&&(' / '+company.addr2)}<br/>
                 <span style={{color:'#aaa'}}>WEB</span>&nbsp;&nbsp;{company.web}&nbsp;&nbsp;&nbsp;
