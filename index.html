@@ -59,7 +59,7 @@ button{cursor:pointer}
   .cover-logo-el{left:0!important;bottom:14mm!important}
   .cover-date-el{right:0!important;bottom:14mm!important}
   .detail-page{
-    display:block!important;
+    display:flex!important;flex-direction:column!important;
     width:297mm!important;height:210mm!important;
     background:#fff!important;
     padding:14mm 18mm 12mm!important;
@@ -657,9 +657,11 @@ function ReadOnlyApp({ quoteId, token }) {
 ══════════════════════════════════════ */
 function ManagementApp({user}){
   const[quotes,setQuotes]=useState([]);
+  const[schedules,setSchedules]=useState([]);
   const[company,setCompany]=useState(DEFAULT_COMPANY);
   const[page,setPage]=useState('dashboard');
   const[selectedId,setSelectedId]=useState(null);
+  const[selectedSchId,setSelectedSchId]=useState(null);
   const[sideOpen,setSideOpen]=useState(window.innerWidth>768);
   const[showSettings,setShowSettings]=useState(false);
   const[memberRole,setMemberRole]=useState('editor');
@@ -701,6 +703,16 @@ function ManagementApp({user}){
     return()=>unsub();
   },[]);
 
+  /* 일정표 실시간 동기화 */
+  useEffect(()=>{
+    const{db,fb}=window;
+    const unsub=fb.onSnapshot(fb.collection(db,'schedules'),snap=>{
+      const ss=snap.docs.map(d=>d.data());
+      setSchedules(ss.sort((a,b)=>b.id.localeCompare(a.id)));
+    });
+    return()=>unsub();
+  },[]);
+
   /* 화면 크기 변경 시 사이드바 자동 제어 */
   useEffect(()=>{
     const fn=()=>setSideOpen(window.innerWidth>768);
@@ -709,6 +721,7 @@ function ManagementApp({user}){
   },[]);
 
   const selected=quotes.find(q=>q.id===selectedId)||null;
+  const selectedSch=schedules.find(s=>s.id===selectedSchId)||null;
   const navTo=p=>{setPage(p);setSelectedId(null);if(window.innerWidth<=768)setSideOpen(false);};
 
   const saveCompany=async c=>{
@@ -722,6 +735,21 @@ function ManagementApp({user}){
     try{await fb.setDoc(fb.doc(db,'quotes',q.id),q);}
     catch(e){alert('저장 실패: '+e.message);return;}
     setSelectedId(q.id); setPage('detail');
+  };
+
+  const saveSchedule=async s=>{
+    const{db,fb}=window;
+    try{await fb.setDoc(fb.doc(db,'schedules',s.id),s);}
+    catch(e){alert('저장 실패: '+e.message);return;}
+    setSelectedSchId(s.id); setPage('schedule_detail');
+  };
+
+  const deleteSchedule=async id=>{
+    if(!isAdmin){alert('관리자만 삭제할 수 있습니다');return;}
+    if(!confirm('일정표를 삭제하시겠습니까?'))return;
+    const{db,fb}=window;
+    try{await fb.deleteDoc(fb.doc(db,'schedules',id));}catch(e){alert('삭제 실패: '+e.message);return;}
+    setSelectedSchId(null); setPage('schedules');
   };
 
   const deleteQuote=async id=>{
@@ -757,14 +785,14 @@ function ManagementApp({user}){
   return(
     <div style={{display:'flex',minHeight:'100vh'}}>
       {sideOpen&&<div className="sidebar-backdrop no-print" onClick={()=>setSideOpen(false)}/>}
-      <Sidebar open={sideOpen} page={page} setPage={navTo} quotes={quotes} company={company}
+      <Sidebar open={sideOpen} page={page} setPage={navTo} quotes={quotes} schedules={schedules} company={company}
         openSettings={()=>setShowSettings(true)} onLogout={()=>window.fbAuth.signOut()}
         memberRole={memberRole} userEmail={user?.email} canEdit={canEdit}/>
       <div className="main-wrap" style={{flex:1,marginLeft:sideOpen?250:0,transition:'margin .25s',minWidth:0}}>
         <header className="topbar no-print" style={{height:58,background:'#fff',borderBottom:'1px solid #e8e8e8',display:'flex',alignItems:'center',padding:'0 24px',gap:10,position:'sticky',top:0,zIndex:50}}>
           <button onClick={()=>setSideOpen(!sideOpen)} style={{border:'none',background:'none',fontSize:20,color:'#555',lineHeight:1,padding:4,flexShrink:0}}>☰</button>
           <span style={{fontSize:15,fontWeight:600,color:'#111',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-            {{dashboard:'대시보드',list:'견적 목록',new:'새 견적서 작성',edit:'견적서 수정',detail:'견적서 상세'}[page]}
+            {{dashboard:'대시보드',list:'견적 목록',new:'새 견적서 작성',edit:'견적서 수정',detail:'견적서 상세',schedules:'일정표 목록',schedule_new:'새 일정표 작성',schedule_edit:'일정표 수정',schedule_detail:'일정표 상세'}[page]}
           </span>
           <span style={{fontSize:11,background:rb.bg,color:'#fff',borderRadius:4,padding:'2px 8px',fontWeight:600,flexShrink:0}}>{rb.label}</span>
           <span style={{fontSize:12,color:'#bbb',flexShrink:0,display:'none'}} className="col-hide-mobile">{new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}</span>
@@ -781,6 +809,16 @@ function ManagementApp({user}){
             <QuoteDetail quote={selected} company={company} setPage={setPage}
               deleteQuote={deleteQuote} updateStatus={updateStatus} generateShareLink={generateShareLink}
               isAdmin={isAdmin} canEdit={canEdit}/>}
+          {page==='schedules'&&
+            <ScheduleList schedules={schedules} setPage={setPage} setSelectedSchId={setSelectedSchId}
+              deleteSchedule={deleteSchedule} isAdmin={isAdmin} canEdit={canEdit}/>}
+          {(page==='schedule_new'||page==='schedule_edit')&&canEdit&&
+            <ScheduleForm initial={page==='schedule_edit'?selectedSch:null} onSave={saveSchedule} setPage={setPage}/>}
+          {(page==='schedule_new'||page==='schedule_edit')&&!canEdit&&
+            <div style={{textAlign:'center',padding:60,color:'#aaa',fontSize:14}}>편집 권한이 없습니다.</div>}
+          {page==='schedule_detail'&&selectedSch&&
+            <ScheduleDetail schedule={selectedSch} setPage={setPage} deleteSchedule={deleteSchedule}
+              isAdmin={isAdmin} canEdit={canEdit}/>}
         </main>
       </div>
       {showSettings&&<SettingsModal company={company} onSave={saveCompany} onClose={()=>setShowSettings(false)} isAdmin={isAdmin} currentUser={user}/>}
@@ -791,7 +829,7 @@ function ManagementApp({user}){
 /* ══════════════════════════════════════
    SIDEBAR
 ══════════════════════════════════════ */
-function Sidebar({open,page,setPage,quotes,company,openSettings,onLogout,memberRole,userEmail,canEdit}){
+function Sidebar({open,page,setPage,quotes,schedules,company,openSettings,onLogout,memberRole,userEmail,canEdit}){
   const pending=quotes.filter(q=>q.status==='pending').length;
   return(
     <aside className="no-print" style={{position:'fixed',top:0,left:0,bottom:0,width:250,background:'#fff',borderRight:'1px solid #e8e8e8',transform:open?'translateX(0)':'translateX(-250px)',transition:'transform .25s',zIndex:100,display:'flex',flexDirection:'column'}}>
@@ -804,9 +842,10 @@ function Sidebar({open,page,setPage,quotes,company,openSettings,onLogout,memberR
           {id:'dashboard',icon:'📊',label:'대시보드'},
           {id:'list',     icon:'📋',label:'견적 목록',badge:pending||null},
           ...(canEdit?[{id:'new',icon:'✏️',label:'새 견적서 작성'}]:[]),
+          {id:'schedules',icon:'📅',label:'일정표',badge:(schedules||[]).length||null},
         ].map(m=>(
           <button key={m.id} onClick={()=>setPage(m.id)}
-            style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:6,border:'none',background:page===m.id?'#f5f5f5':'transparent',color:page===m.id?'#111':'#666',fontWeight:page===m.id?600:400,fontSize:14,marginBottom:2,textAlign:'left',transition:'all .15s'}}>
+            style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:6,border:'none',background:(page===m.id||(m.id==='schedules'&&page.startsWith('schedule')))?'#f5f5f5':'transparent',color:(page===m.id||(m.id==='schedules'&&page.startsWith('schedule')))?'#111':'#666',fontWeight:(page===m.id||(m.id==='schedules'&&page.startsWith('schedule')))?600:400,fontSize:14,marginBottom:2,textAlign:'left',transition:'all .15s'}}>
             <span>{m.icon}</span><span style={{flex:1}}>{m.label}</span>
             {m.badge&&<span style={{background:'#e53e3e',color:'#fff',borderRadius:10,padding:'1px 7px',fontSize:11,fontWeight:600}}>{m.badge}</span>}
           </button>
@@ -1005,6 +1044,22 @@ function InpField({lbl,val,onChange,ph,err,required}) {
         onFocus={e=>e.target.style.borderColor='#111'}
         onBlur={e=>e.target.style.borderColor=err?'#e53e3e':'#e0e0e0'}/>
       {err&&<div style={{fontSize:11,color:'#e53e3e',marginTop:3}}>{err}</div>}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════
+   설정 모달 전용 입력 필드 컴포넌트
+   ※ SettingsModal 외부 정의 → 렌더링 시 재마운트 방지
+══════════════════════════════════════ */
+function SettingsField({lbl, val, onChange, ph}) {
+  return (
+    <div>
+      <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>{lbl}</label>
+      <input value={val||''} onChange={e=>onChange(e.target.value)} placeholder={ph}
+        style={{width:'100%',padding:'8px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}
+        onFocus={e=>e.target.style.borderColor='#111'}
+        onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
     </div>
   );
 }
@@ -1255,9 +1310,439 @@ function QuoteForm({initial, onSave, setPage}) {
 }
 
 /* ══════════════════════════════════════
+   GANTT 유틸 & 일정표 컴포넌트
+══════════════════════════════════════ */
+const genSchId = () => 'SC' + Date.now().toString().slice(-8);
+
+function getWeekStartDates(startDate, weeks) {
+  const result = [];
+  const d = new Date(startDate + 'T00:00:00');
+  for (let i = 0; i < weeks; i++) {
+    result.push(new Date(d));
+    d.setDate(d.getDate() + 7);
+  }
+  return result;
+}
+
+function ganttMonthSpans(startDate, weeks) {
+  const weekDates = getWeekStartDates(startDate, weeks);
+  const months = [];
+  weekDates.forEach((d, i) => {
+    const key = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}`;
+    if (!months.length || months[months.length-1].key !== key) {
+      months.push({ key, label: `${d.getMonth()+1}월`, span: 1 });
+    } else {
+      months[months.length-1].span++;
+    }
+  });
+  return { months, weekDates };
+}
+
+/* ── GANTT DOCUMENT ── */
+function GanttDocument({ schedule }) {
+  if (!schedule) return null;
+  const { months, weekDates } = ganttMonthSpans(schedule.startDate || today(), schedule.weeks || 8);
+  const BAR_COLOR = '#c8232c';
+  const CELL = (inRange) => ({
+    padding: '4px 2px', border: '1px solid #e8e8e8', textAlign: 'center', fontSize: 10,
+    background: inRange ? BAR_COLOR : 'transparent', minWidth: 28,
+  });
+  return (
+    <div className="gantt-doc" style={{
+      background:'#fff', borderRadius:8, border:'1px solid #e8e8e8',
+      padding:'32px 40px', width:'100%', aspectRatio:'297/210', overflow:'hidden',
+      display:'flex', flexDirection:'column',
+    }}>
+      {/* 헤더 */}
+      <div style={{marginBottom:14}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
+          <div>
+            <h2 style={{fontSize:20,fontWeight:600,color:'#111',marginBottom:2}}>{schedule.projectTitle||'일정표'}</h2>
+            {schedule.clientName&&<div style={{fontSize:13,color:'#888'}}>{schedule.clientName}</div>}
+          </div>
+          <div style={{fontSize:12,color:'#aaa',textAlign:'right'}}>
+            시작 {fmtDateKo(schedule.startDate)}&nbsp;&nbsp;·&nbsp;&nbsp;총 {schedule.weeks}주
+          </div>
+        </div>
+      </div>
+      {/* 간트 테이블 */}
+      <div style={{flex:1,overflow:'hidden'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',tableLayout:'fixed',fontSize:11}}>
+          <colgroup>
+            <col style={{width:'9%'}}/>
+            <col style={{width:'17%'}}/>
+            {weekDates.map((_,i)=><col key={i} style={{width:`${74/weekDates.length}%`}}/>)}
+          </colgroup>
+          <thead>
+            {/* 월 행 */}
+            <tr style={{background:'#111',color:'#fff'}}>
+              <th style={{padding:'7px 8px',border:'1px solid #333',fontWeight:600,textAlign:'center'}}>구분</th>
+              <th style={{padding:'7px 8px',border:'1px solid #333',fontWeight:600,textAlign:'center'}}>작업내용</th>
+              {months.map(m=>(
+                <th key={m.key} colSpan={m.span} style={{padding:'7px 4px',border:'1px solid #333',fontWeight:600,textAlign:'center'}}>
+                  {m.label}
+                </th>
+              ))}
+            </tr>
+            {/* 주차 행 */}
+            <tr style={{background:'#333',color:'#ccc'}}>
+              <th style={{padding:'5px 4px',border:'1px solid #444'}}></th>
+              <th style={{padding:'5px 4px',border:'1px solid #444',fontSize:10,fontWeight:400}}>기간/주차</th>
+              {weekDates.map((d,i)=>(
+                <th key={i} style={{padding:'4px 2px',border:'1px solid #444',textAlign:'center',fontWeight:400}}>
+                  <div style={{fontSize:10}}>W{i+1}</div>
+                  <div style={{fontSize:9,color:'#999'}}>{String(d.getMonth()+1)}/{String(d.getDate()).padStart(2,'0')}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(schedule.rows||[]).map((row,ri)=>{
+              const tasks=(row.tasks||[]).filter(t=>t.name);
+              if(!tasks.length) return null;
+              return tasks.map((task,ti)=>(
+                <tr key={`${ri}-${ti}`} style={{borderBottom:'1px solid #eee'}}>
+                  {ti===0&&(
+                    <td rowSpan={tasks.length} style={{padding:'6px 8px',fontWeight:600,fontSize:11,color:'#111',verticalAlign:'middle',textAlign:'center',background:'#f9f9f9',border:'1px solid #e8e8e8',lineHeight:1.4}}>
+                      {row.group}
+                    </td>
+                  )}
+                  <td style={{padding:'6px 8px',fontSize:11,color:'#333',border:'1px solid #e8e8e8',lineHeight:1.4}}>{task.name}</td>
+                  {weekDates.map((_,wi)=>{
+                    const inRange = (wi+1) >= (task.startWeek||1) && (wi+1) <= (task.endWeek||1);
+                    return <td key={wi} style={CELL(inRange)}/>;
+                  })}
+                </tr>
+              ));
+            })}
+          </tbody>
+        </table>
+      </div>
+      {schedule.notes&&(
+        <div style={{marginTop:10,fontSize:11,color:'#666',lineHeight:1.7}}>※ {schedule.notes}</div>
+      )}
+    </div>
+  );
+}
+
+/* ── SCHEDULE FORM (2-step) ── */
+function ScheduleForm({initial, onSave, setPage}) {
+  const isEdit = !!initial;
+  const [step,      setStep]      = useState(1);
+  const [title,     setTitle]     = useState(initial?.projectTitle||'');
+  const [client,    setClient]    = useState(initial?.clientName||'');
+  const [startDate, setStartDate] = useState(initial?.startDate||today());
+  const [weeks,     setWeeks]     = useState(initial?.weeks||12);
+  const [rows,      setRows]      = useState(initial?.rows||[{group:'',tasks:[{name:'',startWeek:1,endWeek:4}]}]);
+  const [notes,     setNotes]     = useState(initial?.notes||'');
+  const [errs,      setErrs]      = useState({});
+
+  const addRow    = ()             => setRows(p=>[...p,{group:'',tasks:[{name:'',startWeek:1,endWeek:weeks}]}]);
+  const delRow    = i              => setRows(p=>p.filter((_,idx)=>idx!==i));
+  const updGroup  = (i,v)          => setRows(p=>p.map((r,idx)=>idx===i?{...r,group:v}:r));
+  const addTask   = i              => setRows(p=>p.map((r,idx)=>idx===i?{...r,tasks:[...r.tasks,{name:'',startWeek:1,endWeek:weeks}]}:r));
+  const delTask   = (ri,ti)        => setRows(p=>p.map((r,idx)=>idx===ri?{...r,tasks:r.tasks.filter((_,tidx)=>tidx!==ti)}:r));
+  const updTask   = (ri,ti,f,v)    => setRows(p=>p.map((r,idx)=>idx===ri?{...r,tasks:r.tasks.map((t,tidx)=>tidx===ti?{...t,[f]:(f==='startWeek'||f==='endWeek')?Math.max(1,Math.min(weeks,parseInt(v)||1)):v}:t)}:r));
+
+  const validate = () => { const e={}; if(!title.trim())e.title='프로젝트명을 입력해주세요'; setErrs(e); return !Object.keys(e).length; };
+
+  const handleSave = () => {
+    if(!validate())return;
+    const entry={at:nowIso(),action:isEdit?'일정표 수정':'일정표 생성'};
+    const prevHist=initial?.history||[];
+    const snap=isEdit?{rows:initial.rows,startDate:initial.startDate,weeks:initial.weeks,notes:initial.notes}:null;
+    onSave({
+      id:initial?.id||genSchId(),
+      projectTitle:title, clientName:client, startDate, weeks, rows, notes,
+      createdAt:initial?.createdAt||today(),
+      history:[...prevHist,snap?{...entry,snapshot:snap}:entry],
+    });
+  };
+
+  const inpStyle = (err) => ({width:'100%',padding:'9px 11px',border:`1px solid ${err?'#e53e3e':'#e0e0e0'}`,borderRadius:6,fontSize:13,outline:'none'});
+
+  return (
+    <div style={{maxWidth:960,margin:'0 auto'}}>
+      {/* 스텝 탭 */}
+      <div style={{display:'flex',gap:4,background:'#fff',borderRadius:8,padding:6,marginBottom:18,border:'1px solid #e8e8e8'}}>
+        {[{n:1,l:'① 기본 정보'},{n:2,l:'② 행 / 작업 편집'},{n:3,l:'③ 메모 · 미리보기'}].map(s=>(
+          <button key={s.n} onClick={()=>setStep(s.n)}
+            style={{flex:1,padding:'9px',border:'none',borderRadius:6,background:step===s.n?'#111':'transparent',color:step===s.n?'#fff':'#aaa',fontWeight:step===s.n?600:400,fontSize:13,transition:'all .15s'}}>
+            {s.l}
+          </button>
+        ))}
+      </div>
+
+      {/* STEP 1 */}
+      {step===1&&(
+        <div style={{background:'#fff',borderRadius:8,padding:26,border:'1px solid #e8e8e8'}}>
+          <h3 style={{fontSize:14,fontWeight:600,marginBottom:20,color:'#111'}}>기본 정보</h3>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:22}}>
+            <div>
+              <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>프로젝트명 *</label>
+              <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="프로젝트명"
+                style={inpStyle(errs.title)}
+                onFocus={e=>e.target.style.borderColor='#111'}
+                onBlur={e=>e.target.style.borderColor=errs.title?'#e53e3e':'#e0e0e0'}/>
+              {errs.title&&<div style={{fontSize:11,color:'#e53e3e',marginTop:3}}>{errs.title}</div>}
+            </div>
+            <div>
+              <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>업체명</label>
+              <input value={client} onChange={e=>setClient(e.target.value)} placeholder="(주)클라이언트"
+                style={inpStyle(false)}
+                onFocus={e=>e.target.style.borderColor='#111'}
+                onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
+            </div>
+            <div>
+              <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>시작일</label>
+              <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inpStyle(false)}/>
+            </div>
+            <div>
+              <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:8}}>총 주차</label>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                {[4,8,12,16,20,24].map(w=>(
+                  <button key={w} onClick={()=>setWeeks(w)}
+                    style={{padding:'6px 12px',border:`1.5px solid ${weeks===w?'#111':'#e0e0e0'}`,borderRadius:6,background:weeks===w?'#111':'#fff',color:weeks===w?'#fff':'#666',fontSize:12,fontWeight:weeks===w?600:400,cursor:'pointer',transition:'all .15s'}}>
+                    {w}주
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={{display:'flex',justifyContent:'flex-end'}}>
+            <button onClick={()=>setStep(2)} style={{padding:'10px 26px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:13,fontWeight:600}}>다음 →</button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2 */}
+      {step===2&&(
+        <div style={{background:'#fff',borderRadius:8,padding:26,border:'1px solid #e8e8e8'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+            <h3 style={{fontSize:14,fontWeight:600,color:'#111'}}>행 / 작업 편집</h3>
+            <span style={{fontSize:11,color:'#aaa'}}>주차 범위: 1 ~ {weeks}주</span>
+          </div>
+          <div style={{maxHeight:'55vh',overflowY:'auto',marginBottom:14}}>
+            {rows.map((row,ri)=>(
+              <div key={ri} style={{border:'1px solid #e8e8e8',borderRadius:8,padding:14,marginBottom:10,background:'#fafafa'}}>
+                <div style={{display:'flex',gap:10,alignItems:'center',marginBottom:10}}>
+                  <input value={row.group} onChange={e=>updGroup(ri,e.target.value)} placeholder="구분명 (예: 기획)"
+                    style={{flex:1,padding:'7px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none',fontWeight:600}}
+                    onFocus={e=>e.target.style.borderColor='#111'}
+                    onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
+                  <button onClick={()=>delRow(ri)} style={{border:'none',background:'none',color:'#ddd',fontSize:16,cursor:'pointer',lineHeight:1}}
+                    onMouseEnter={e=>e.target.style.color='#e53e3e'}
+                    onMouseLeave={e=>e.target.style.color='#ddd'}>✕</button>
+                </div>
+                <div style={{fontSize:10,color:'#bbb',marginBottom:6,display:'grid',gridTemplateColumns:'1fr 70px 70px 28px',gap:6}}>
+                  <span>작업내용</span><span style={{textAlign:'center'}}>시작 주차</span><span style={{textAlign:'center'}}>종료 주차</span><span/>
+                </div>
+                {row.tasks.map((task,ti)=>(
+                  <div key={ti} style={{display:'grid',gridTemplateColumns:'1fr 70px 70px 28px',gap:6,marginBottom:6,alignItems:'center'}}>
+                    <input value={task.name} onChange={e=>updTask(ri,ti,'name',e.target.value)} placeholder="작업 내용"
+                      style={{padding:'6px 8px',border:'1px solid #e0e0e0',borderRadius:5,fontSize:12,outline:'none'}}
+                      onFocus={e=>e.target.style.borderColor='#111'}
+                      onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
+                    <input type="number" value={task.startWeek} min="1" max={weeks}
+                      onChange={e=>updTask(ri,ti,'startWeek',e.target.value)}
+                      style={{padding:'6px 4px',border:'1px solid #e0e0e0',borderRadius:5,fontSize:12,outline:'none',textAlign:'center'}}/>
+                    <input type="number" value={task.endWeek} min="1" max={weeks}
+                      onChange={e=>updTask(ri,ti,'endWeek',e.target.value)}
+                      style={{padding:'6px 4px',border:'1px solid #e0e0e0',borderRadius:5,fontSize:12,outline:'none',textAlign:'center'}}/>
+                    <button onClick={()=>delTask(ri,ti)} style={{border:'none',background:'none',color:'#ddd',fontSize:14,cursor:'pointer',lineHeight:1}}
+                      onMouseEnter={e=>e.target.style.color='#e53e3e'}
+                      onMouseLeave={e=>e.target.style.color='#ddd'}>✕</button>
+                  </div>
+                ))}
+                <button onClick={()=>addTask(ri)}
+                  style={{width:'100%',padding:'5px',border:'1px dashed #e0e0e0',background:'none',borderRadius:5,fontSize:11,color:'#aaa',cursor:'pointer',marginTop:2}}>
+                  + 작업 추가
+                </button>
+              </div>
+            ))}
+          </div>
+          <button onClick={addRow}
+            style={{width:'100%',padding:'8px',border:'1px dashed #ccc',background:'none',borderRadius:8,fontSize:12,color:'#888',cursor:'pointer',marginBottom:14}}>
+            + 구분 행 추가
+          </button>
+          <div style={{display:'flex',justifyContent:'space-between'}}>
+            <button onClick={()=>setStep(1)} style={{padding:'10px 22px',background:'#f0f0f0',color:'#555',border:'none',borderRadius:6,fontSize:13,fontWeight:600}}>← 이전</button>
+            <button onClick={()=>setStep(3)} style={{padding:'10px 26px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:13,fontWeight:600}}>다음 →</button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3 */}
+      {step===3&&(
+        <div style={{background:'#fff',borderRadius:8,padding:26,border:'1px solid #e8e8e8'}}>
+          <h3 style={{fontSize:14,fontWeight:600,marginBottom:16,color:'#111'}}>메모 · 미리보기</h3>
+          <div style={{marginBottom:18}}>
+            <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:6}}>메모 (선택)</label>
+            <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={2}
+              placeholder="일정 관련 참고사항을 입력하세요."
+              style={{width:'100%',padding:'10px 11px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:12,outline:'none',resize:'vertical',lineHeight:1.7}}/>
+          </div>
+          <div style={{marginBottom:22}}>
+            <div style={{fontSize:11,fontWeight:600,color:'#aaa',marginBottom:8}}>미리보기</div>
+            <GanttDocument schedule={{id:'preview',projectTitle:title,clientName:client,startDate,weeks,rows,notes}}/>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between'}}>
+            <button onClick={()=>setStep(2)} style={{padding:'10px 22px',background:'#f0f0f0',color:'#555',border:'none',borderRadius:6,fontSize:13,fontWeight:600}}>← 이전</button>
+            <button onClick={handleSave} style={{padding:'11px 32px',background:'#111',color:'#fff',border:'none',borderRadius:7,fontSize:14,fontWeight:600}}>
+              {isEdit?'수정 완료 ✓':'일정표 저장 ✓'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── SCHEDULE DETAIL ── */
+function ScheduleDetail({schedule, setPage, deleteSchedule, isAdmin, canEdit}) {
+  const [showHistory, setShowHistory] = useState(false);
+  const [histIdx,     setHistIdx]     = useState(null); // index into reversed history
+  const [pdfLoading,  setPdfLoading]  = useState(false);
+
+  const saveGanttPDF = async () => {
+    const {jsPDF}=window.jspdf;
+    const pages=document.querySelectorAll('.gantt-doc');
+    if(!pages.length){alert('저장할 일정표를 찾을 수 없습니다.');return;}
+    const REF_W=1597, REF_H=Math.round(REF_W*210/297);
+    const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+    for(let i=0;i<pages.length;i++){
+      if(i>0)doc.addPage();
+      const canvas=await html2canvas(pages[i],{
+        scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false,
+        onclone:(clonedDoc)=>{
+          clonedDoc.querySelectorAll('.gantt-doc').forEach(p=>{
+            p.style.setProperty('width',REF_W+'px','important');
+            p.style.setProperty('height',REF_H+'px','important');
+            p.style.setProperty('aspect-ratio','unset','important');
+            p.style.setProperty('overflow','hidden','important');
+          });
+        },
+      });
+      doc.addImage(canvas.toDataURL('image/jpeg',0.98),'JPEG',0,0,297,210);
+    }
+    doc.save(`${schedule.projectTitle||schedule.id}_일정표.pdf`);
+  };
+
+  const revHistory = [...(schedule.history||[])].reverse();
+  const snap = histIdx!==null ? revHistory[histIdx]?.snapshot : null;
+  const viewSchedule = snap ? {...schedule,...snap} : schedule;
+
+  return (
+    <div>
+      <div className="action-bar no-print" style={{background:'#fff',borderRadius:8,padding:'12px 18px',marginBottom:14,border:'1px solid #e8e8e8',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+        <span style={{fontWeight:600,fontSize:13,color:'#333'}}>{schedule.id}</span>
+        {snap&&<span style={{fontSize:11,background:'#fff3cd',color:'#856404',borderRadius:4,padding:'2px 8px',fontWeight:600}}>이력 보기 중</span>}
+        <div style={{flex:1}}/>
+        <button onClick={()=>{setShowHistory(!showHistory);if(showHistory)setHistIdx(null);}}
+          style={{padding:'7px 13px',background:'#f5f5f5',color:'#555',border:'none',borderRadius:6,fontSize:12,fontWeight:600}}>
+          🕐 이력 {schedule.history?.length?`(${schedule.history.length})`:''}
+        </button>
+        {canEdit&&<button onClick={()=>setPage('schedule_edit')} style={{padding:'7px 15px',background:'#f5f5f5',color:'#555',border:'none',borderRadius:6,fontSize:12,fontWeight:600}}>✏️ 수정</button>}
+        <button disabled={pdfLoading} onClick={async()=>{setPdfLoading(true);await saveGanttPDF();setPdfLoading(false);}}
+          style={{padding:'7px 15px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:12,fontWeight:600,cursor:pdfLoading?'wait':'pointer'}}>
+          {pdfLoading?'⏳ 생성 중...':'📄 PDF 저장 (A4)'}
+        </button>
+        {isAdmin&&<button onClick={()=>deleteSchedule(schedule.id)}
+          style={{padding:'7px 13px',background:'#fff0f0',color:'#c53030',border:'1px solid #fed7d7',borderRadius:6,fontSize:12,fontWeight:600}}>삭제</button>}
+      </div>
+
+      {showHistory&&(
+        <div className="no-print" style={{background:'#fff',borderRadius:8,border:'1px solid #e8e8e8',padding:'16px 20px',marginBottom:14}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:600,color:'#333'}}>변경 이력</div>
+            <button onClick={()=>{setShowHistory(false);setHistIdx(null);}} style={{border:'none',background:'none',fontSize:16,color:'#aaa',cursor:'pointer',lineHeight:1}}>✕</button>
+          </div>
+          {revHistory.length===0&&<div style={{fontSize:12,color:'#ccc',textAlign:'center',padding:'16px 0'}}>이력이 없습니다</div>}
+          {revHistory.map((h,i)=>(
+            <div key={i} style={{display:'flex',gap:14,alignItems:'flex-start',padding:'9px 0',borderBottom:i<revHistory.length-1?'1px solid #f5f5f5':'none'}}>
+              <div style={{width:7,height:7,borderRadius:'50%',background:'#333',marginTop:5,flexShrink:0}}/>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,fontWeight:600,color:'#222'}}>{h.action}</div>
+                <div style={{fontSize:11,color:'#aaa',marginTop:2}}>{fmtIsoKo(h.at)}</div>
+              </div>
+              {h.snapshot&&(
+                <button onClick={()=>setHistIdx(histIdx===i?null:i)}
+                  style={{padding:'3px 10px',border:'1px solid #e0e0e0',borderRadius:4,fontSize:11,background:histIdx===i?'#111':'#fff',color:histIdx===i?'#fff':'#555',cursor:'pointer',whiteSpace:'nowrap'}}>
+                  {histIdx===i?'닫기':'미리보기'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <GanttDocument schedule={viewSchedule}/>
+    </div>
+  );
+}
+
+/* ── SCHEDULE LIST ── */
+function ScheduleList({schedules, setPage, setSelectedSchId, deleteSchedule, isAdmin, canEdit}) {
+  const [srch, setSrch] = useState('');
+  let list = [...schedules];
+  if(srch) list=list.filter(s=>
+    (s.projectTitle||'').includes(srch)||(s.clientName||'').includes(srch)||s.id.includes(srch)
+  );
+  return (
+    <div>
+      <div className="no-print" style={{background:'#fff',borderRadius:8,padding:'14px 16px',marginBottom:14,border:'1px solid #e8e8e8',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+        <input value={srch} onChange={e=>setSrch(e.target.value)} placeholder="업체명, 프로젝트명, ID 검색..."
+          style={{flex:1,minWidth:180,padding:'8px 11px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}/>
+        {canEdit&&<button onClick={()=>setPage('schedule_new')}
+          style={{padding:'8px 18px',background:'#111',color:'#fff',border:'none',borderRadius:6,fontSize:13,fontWeight:600,whiteSpace:'nowrap'}}>
+          + 새 일정표
+        </button>}
+      </div>
+      <div style={{background:'#fff',borderRadius:8,border:'1px solid #e8e8e8',overflow:'hidden'}}>
+        <table style={{width:'100%',borderCollapse:'collapse'}}>
+          <thead>
+            <tr style={{background:'#fafafa',borderBottom:'1px solid #e8e8e8'}}>
+              {['일정표 ID','프로젝트명','업체명','시작일','주차','작성일',''].map(h=>(
+                <th key={h} style={{padding:'11px 14px',fontSize:11,fontWeight:600,color:'#888',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {list.map(s=>(
+              <tr key={s.id} onClick={()=>{setSelectedSchId(s.id);setPage('schedule_detail');}}
+                style={{borderBottom:'1px solid #f5f5f5',cursor:'pointer'}}
+                onMouseEnter={e=>e.currentTarget.style.background='#fafafa'}
+                onMouseLeave={e=>e.currentTarget.style.background=''}>
+                <td style={{padding:'12px 14px',fontSize:12,fontWeight:600,color:'#555'}}>{s.id}</td>
+                <td style={{padding:'12px 14px',fontSize:13,fontWeight:600,color:'#111'}}>{s.projectTitle||'—'}</td>
+                <td style={{padding:'12px 14px',fontSize:12,color:'#888'}}>{s.clientName||'—'}</td>
+                <td style={{padding:'12px 14px',fontSize:12,color:'#aaa'}}>{fmtDate(s.startDate)}</td>
+                <td style={{padding:'12px 14px',fontSize:12,color:'#aaa'}}>{s.weeks}주</td>
+                <td style={{padding:'12px 14px',fontSize:12,color:'#aaa'}}>{fmtDate(s.createdAt)}</td>
+                <td style={{padding:'12px 10px'}} onClick={e=>e.stopPropagation()}>
+                  {isAdmin&&<button onClick={()=>deleteSchedule(s.id)}
+                    style={{border:'none',background:'none',color:'#ddd',fontSize:15,cursor:'pointer',padding:3,lineHeight:1}}
+                    onMouseEnter={e=>e.target.style.color='#e53e3e'}
+                    onMouseLeave={e=>e.target.style.color='#ddd'}>✕</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!list.length&&(
+          <div style={{padding:40,textAlign:'center',color:'#ccc',fontSize:13}}>
+            {srch?'검색 결과가 없습니다':'일정표가 없습니다. 새 일정표를 작성해보세요!'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════
    QUOTE DOCUMENT  (재사용 컴포넌트)
 ══════════════════════════════════════ */
-function QuoteDocument({quote, company}) {
+function QuoteDocument({quote, company, docFontSize=20, docRowPad=14}) {
   const rawTotal  = calcTotal(quote.items);
   const truncUnit = quote.truncUnit || 0;
   const total     = truncUnit > 0 ? Math.floor(rawTotal / truncUnit) * truncUnit : rawTotal;
@@ -1289,7 +1774,8 @@ function QuoteDocument({quote, company}) {
       </div>
 
       {/* ─── 견적서 본문 ─── */}
-      <div className="detail-page" style={{background:'#fff', borderRadius:8, border:'1px solid #e8e8e8', padding:'36px 52px', width:'100%', aspectRatio:'297/210', overflow:'hidden'}}>
+      <div className="detail-page" style={{background:'#fff', borderRadius:8, border:'1px solid #e8e8e8', padding:'36px 52px', width:'100%', aspectRatio:'297/210', overflow:'hidden', display:'flex', flexDirection:'column'}}>
+        <div style={{flex:1, overflow:'hidden', minHeight:0}}>
         <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:18}}>
           <h2 style={{fontSize:22, fontWeight:600, color:'#111'}}>
             {quote.client.company}
@@ -1306,11 +1792,11 @@ function QuoteDocument({quote, company}) {
 
         {/* 항목 테이블 */}
         <div className="detail-tbl-wrap">
-        <table style={{width:'100%', borderCollapse:'collapse', fontSize:20}}>
+        <table style={{width:'100%', borderCollapse:'collapse', fontSize:docFontSize}}>
           <thead>
             <tr style={{borderTop:'2px solid #111', borderBottom:'2px solid #111'}}>
               {[['품 명','13%'],['세 부 내 용','52%'],['규격/수량','13%'],['제작비용','22%']].map(([h,w])=>(
-                <th key={h} style={{padding:'11px 14px', textAlign:h==='제작비용'?'right':h==='규격/수량'?'center':'left', fontWeight:600, fontSize:20, width:w}}>
+                <th key={h} style={{padding:`${docRowPad}px 14px`, textAlign:h==='제작비용'?'right':h==='규격/수량'?'center':'left', fontWeight:600, fontSize:docFontSize, width:w}}>
                   {h}
                 </th>
               ))}
@@ -1319,10 +1805,10 @@ function QuoteDocument({quote, company}) {
           <tbody>
             {quote.items.map((it,idx)=>(
               <tr key={it.id||idx} style={{borderBottom:idx===quote.items.length-1?'none':'1px solid #e8e8e8'}}>
-                <td style={{padding:'14px', fontWeight:600, fontSize:20, color:'#111', verticalAlign:'top'}}>{it.category}</td>
-                <td style={{padding:'14px', fontWeight:500, fontSize:20, color:'#333', lineHeight:1.7, verticalAlign:'top'}}>{it.description}</td>
-                <td style={{padding:'14px', fontSize:20, color:'#666', verticalAlign:'top', textAlign:'center'}}>{it.spec}</td>
-                <td style={{padding:'14px', fontWeight:600, fontSize:20, color:'#111', textAlign:'right', verticalAlign:'top', whiteSpace:'nowrap'}}>
+                <td style={{padding:`${docRowPad}px 14px`, fontWeight:600, fontSize:docFontSize, color:'#111', verticalAlign:'top'}}>{it.category}</td>
+                <td style={{padding:`${docRowPad}px 14px`, fontWeight:500, fontSize:docFontSize, color:'#333', lineHeight:1.7, verticalAlign:'top'}}>{it.description}</td>
+                <td style={{padding:`${docRowPad}px 14px`, fontSize:docFontSize, color:'#666', verticalAlign:'top', textAlign:'center'}}>{it.spec}</td>
+                <td style={{padding:`${docRowPad}px 14px`, fontWeight:600, fontSize:docFontSize, color:'#111', textAlign:'right', verticalAlign:'top', whiteSpace:'nowrap'}}>
                   {it.cost ? fmtMoney(it.cost) : ''}
                 </td>
               </tr>
@@ -1377,8 +1863,10 @@ function QuoteDocument({quote, company}) {
           </div>
         )}
 
-        {/* 푸터 */}
-        <div style={{borderTop:'2px solid #111', paddingTop:18, marginTop:20}}>
+        </div>{/* /content-wrap */}
+
+        {/* 푸터 — 항상 페이지 하단 고정 */}
+        <div style={{borderTop:'2px solid #111', paddingTop:14, marginTop:8, flexShrink:0}}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-end'}}>
             <div>
               <div className="logo-font" style={{fontSize:18, fontWeight:600, color:'#111', marginBottom:8}}>{company.nameEn}</div>
@@ -1406,6 +1894,10 @@ function QuoteDetail({quote,company,setPage,deleteQuote,updateStatus,generateSha
   const [showShare,   setShowShare]   = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [pdfLoading,  setPdfLoading]  = useState(false);
+  const [docFontSize, setDocFontSize] = useState(20);
+  const [docRowPad,   setDocRowPad]   = useState(14);
+
+  const btnStyle = (active) => ({padding:'5px 10px',border:`1.5px solid ${active?'#111':'#e0e0e0'}`,borderRadius:5,background:active?'#111':'#fff',color:active?'#fff':'#666',fontSize:11,fontWeight:active?600:400,cursor:'pointer',transition:'all .15s'});
 
   return (
     <div>
@@ -1414,6 +1906,20 @@ function QuoteDetail({quote,company,setPage,deleteQuote,updateStatus,generateSha
         <span style={{fontWeight:600, fontSize:13, color:'#333'}}>{quote.id}</span>
         <span style={{fontSize:11, background:s.bg, color:s.color, borderRadius:4, padding:'2px 9px', fontWeight:600}}>{s.label}</span>
         <div style={{flex:1}}/>
+        {/* 폰트 크기 조절 */}
+        <div style={{display:'flex',alignItems:'center',gap:4,padding:'4px 8px',background:'#f9f9f9',borderRadius:6,border:'1px solid #e8e8e8'}}>
+          <span style={{fontSize:10,color:'#999',fontWeight:600,marginRight:2}}>글자</span>
+          <button onClick={()=>setDocFontSize(p=>Math.max(10,p-1))} style={{...btnStyle(false),padding:'3px 7px',fontSize:12,lineHeight:1}}>−</button>
+          <span style={{fontSize:12,minWidth:26,textAlign:'center',fontWeight:600,color:'#333'}}>{docFontSize}</span>
+          <button onClick={()=>setDocFontSize(p=>Math.min(28,p+1))} style={{...btnStyle(false),padding:'3px 7px',fontSize:12,lineHeight:1}}>+</button>
+        </div>
+        {/* 행 여백 조절 */}
+        <div style={{display:'flex',alignItems:'center',gap:4,padding:'4px 8px',background:'#f9f9f9',borderRadius:6,border:'1px solid #e8e8e8'}}>
+          <span style={{fontSize:10,color:'#999',fontWeight:600,marginRight:2}}>간격</span>
+          {[{l:'소',v:6},{l:'중',v:14},{l:'대',v:22}].map(o=>(
+            <button key={o.v} onClick={()=>setDocRowPad(o.v)} style={btnStyle(docRowPad===o.v)}>{o.l}</button>
+          ))}
+        </div>
         <button onClick={()=>setShowHistory(!showHistory)}
           style={{padding:'7px 13px', background:'#f5f5f5', color:'#555', border:'none', borderRadius:6, fontSize:12, fontWeight:600}}>
           🕐 이력 {quote.history?.length?`(${quote.history.length})`:''}
@@ -1439,7 +1945,7 @@ function QuoteDetail({quote,company,setPage,deleteQuote,updateStatus,generateSha
       {showHistory && <HistoryPanel history={quote.history||[]} onClose={()=>setShowHistory(false)}/>}
       {showShare   && <ShareModal quote={quote} generateShareLink={generateShareLink} onClose={()=>setShowShare(false)}/>}
 
-      <QuoteDocument quote={quote} company={company}/>
+      <QuoteDocument quote={quote} company={company} docFontSize={docFontSize} docRowPad={docRowPad}/>
     </div>
   );
 }
@@ -1556,14 +2062,6 @@ function SettingsModal({company,onSave,onClose,isAdmin,currentUser}){
   const[addErr,setAddErr]=useState('');
   const[adding,setAdding]=useState(false);
   const upd=(f,v)=>setForm(p=>({...p,[f]:v}));
-  const Field=({lbl,f,ph})=>(
-    <div>
-      <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>{lbl}</label>
-      <input value={form[f]||''} onChange={e=>upd(f,e.target.value)} placeholder={ph}
-        style={{width:'100%',padding:'8px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}
-        onFocus={e=>e.target.style.borderColor='#111'} onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
-    </div>
-  );
   useEffect(()=>{
     if(!isAdmin||tab!=='team')return;
     const{db,fb}=window;
@@ -1610,17 +2108,17 @@ function SettingsModal({company,onSave,onClose,isAdmin,currentUser}){
         {tab==='company'&&(
           <>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:16}}>
-              <Field lbl="회사명 (영문)"   f="nameEn"     ph="DAWON"/>
-              <Field lbl="회사명 (국문)"   f="nameKo"     ph="다원"/>
-              <Field lbl="사업자 번호"     f="bizNo"      ph="000-00-00000"/>
-              <Field lbl="대표자"          f="ceo"        ph="홍길동"/>
-              <div style={{gridColumn:'1/-1'}}><Field lbl="주소 1"        f="addr"       ph="서울시 송파구 법원로 8길 8, SKV1 205호"/></div>
-              <div style={{gridColumn:'1/-1'}}><Field lbl="주소 2 (선택)" f="addr2"      ph="부산시 동래구 명륜로 49, 센트럴빌딩 5층"/></div>
-              <Field lbl="웹사이트"  f="web"        ph="www.dawonstudio.com"/>
-              <Field lbl="전화번호"  f="tel"        ph="051-861-1330"/>
-              <Field lbl="이메일"    f="email"      ph="dawonplan@naver.com"/>
-              <Field lbl="은행 계좌" f="bank"       ph="우리은행 1002-446-678649"/>
-              <Field lbl="예금주"    f="bankHolder" ph="홍길동"/>
+              <SettingsField lbl="회사명 (영문)"   val={form.nameEn}     onChange={v=>upd('nameEn',v)}     ph="DAWON"/>
+              <SettingsField lbl="회사명 (국문)"   val={form.nameKo}     onChange={v=>upd('nameKo',v)}     ph="다원"/>
+              <SettingsField lbl="사업자 번호"     val={form.bizNo}      onChange={v=>upd('bizNo',v)}      ph="000-00-00000"/>
+              <SettingsField lbl="대표자"          val={form.ceo}        onChange={v=>upd('ceo',v)}        ph="홍길동"/>
+              <div style={{gridColumn:'1/-1'}}><SettingsField lbl="주소 1"        val={form.addr}       onChange={v=>upd('addr',v)}       ph="서울시 송파구 법원로 8길 8, SKV1 205호"/></div>
+              <div style={{gridColumn:'1/-1'}}><SettingsField lbl="주소 2 (선택)" val={form.addr2}      onChange={v=>upd('addr2',v)}      ph="부산시 동래구 명륜로 49, 센트럴빌딩 5층"/></div>
+              <SettingsField lbl="웹사이트"  val={form.web}        onChange={v=>upd('web',v)}        ph="www.dawonstudio.com"/>
+              <SettingsField lbl="전화번호"  val={form.tel}        onChange={v=>upd('tel',v)}        ph="051-861-1330"/>
+              <SettingsField lbl="이메일"    val={form.email}      onChange={v=>upd('email',v)}      ph="dawonplan@naver.com"/>
+              <SettingsField lbl="은행 계좌" val={form.bank}       onChange={v=>upd('bank',v)}       ph="우리은행 1002-446-678649"/>
+              <SettingsField lbl="예금주"    val={form.bankHolder} onChange={v=>upd('bankHolder',v)} ph="홍길동"/>
               <div>
                 <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>강조 색상</label>
                 <div style={{display:'flex',gap:8,alignItems:'center'}}>
