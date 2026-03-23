@@ -417,7 +417,7 @@ const DEFAULT_COMPANY = {
   addr:'서울시 송파구 법원로 8길 8, SKV1 205호',
   addr2:'부산시 동래구 명륜로 49, 센트럴빌딩 5층',
   web:'www.dawonstudio.com', tel:'051-861-1330', email:'dawonplan@naver.com',
-  bank:'우리은행 1002-446-678649', bankHolder:'강민성', accentColor:'#37dcd3',
+  bank:'우리은행 1002-446-678649', bankHolder:'강민성', accentColor:'#c7e7f6',
 };
 
 const CATALOG = [
@@ -1342,7 +1342,7 @@ function ganttMonthSpans(startDate, weeks) {
 function GanttDocument({ schedule }) {
   if (!schedule) return null;
   const { months, weekDates } = ganttMonthSpans(schedule.startDate || today(), schedule.weeks || 8);
-  const BAR_COLOR = '#37dcd3';
+  const BAR_COLOR = '#c7e7f6';
   const CELL = (inRange) => ({
     padding: '4px 2px', border: '1px solid #e8e8e8', textAlign: 'center', fontSize: 10,
     background: inRange ? BAR_COLOR : 'transparent', minWidth: 28,
@@ -2122,9 +2122,9 @@ function SettingsModal({company,onSave,onClose,isAdmin,currentUser}){
               <div>
                 <label style={{display:'block',fontSize:11,fontWeight:600,color:'#666',marginBottom:5}}>강조 색상</label>
                 <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                  <input type="color" value={form.accentColor||'#37dcd3'} onChange={e=>upd('accentColor',e.target.value)}
+                  <input type="color" value={form.accentColor||'#c7e7f6'} onChange={e=>upd('accentColor',e.target.value)}
                     style={{width:40,height:36,border:'1px solid #e0e0e0',borderRadius:6,cursor:'pointer',padding:2}}/>
-                  <input value={form.accentColor||''} onChange={e=>upd('accentColor',e.target.value)} placeholder="#37dcd3"
+                  <input value={form.accentColor||''} onChange={e=>upd('accentColor',e.target.value)} placeholder="#c7e7f6"
                     style={{flex:1,padding:'8px 10px',border:'1px solid #e0e0e0',borderRadius:6,fontSize:13,outline:'none'}}
                     onFocus={e=>e.target.style.borderColor='#111'} onBlur={e=>e.target.style.borderColor='#e0e0e0'}/>
                 </div>
